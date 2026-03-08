@@ -5,4 +5,4 @@ cloudstream {
     authors = listOf("deepu2135")
     status = 1
     tvTypes = listOf("Movie", "TvSeries")
-    language = "hi"
+    
