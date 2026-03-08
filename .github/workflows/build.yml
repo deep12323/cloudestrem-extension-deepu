@@ -12,14 +12,57 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+
       - name: Grant execute permission
         run: chmod +x gradlew
+
       - name: Build GramCinemaProvider
         run: ./gradlew :GramCinemaProvider:make
+
+      - name: Generate repo.json and plugins.json
+        run: |
+          echo '{
+            "name": "Deepu Repo",
+            "iconUrl": "https://bollywood.eu.org/favicon.ico",
+            "description": "Gram Cinema Extension",
+            "manifestVersion": 1,
+            "pluginLists": [
+              "https://raw.githubusercontent.com/deepu2135/TestPlugins/refs/heads/builds/plugins.json"
+            ]
+          }' > builds/repo.json
+
+          echo '[
+            {
+              "name": "Gram Cinema",
+              "internalName": "GramCinemaProvider",
+              "url": "https://raw.githubusercontent.com/deepu2135/TestPlugins/refs/heads/builds/GramCinemaProvider.cs3",
+              "tvTypes": ["Movie", "TvSeries"],
+              "language": "hi",
+              "iconUrl": "https://bollywood.eu.org/favicon.ico",
+              "apiVersion": 10,
+              "version": 1,
+              "authors": ["deepu2135"],
+              "status": 1,
+              "description": "Bollywood, Hollywood, Tamil & Telugu from Gram Cinema"
+            }
+          ]' > builds/plugins.json
+
+      - name: Push to builds branch
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git fetch origin
+          git checkout -B builds
+          cp builds/* .
+          git add -f *.cs3 repo.json plugins.json
+          git commit -m "Update builds" || true
+          git push origin builds --force
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
