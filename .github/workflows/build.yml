@@ -24,7 +24,7 @@ jobs:
       - name: Build GramCinemaProvider
         run: ./gradlew :GramCinemaProvider:make
 
-      name: Generate repo.json and plugins.json
+     - name: Generate repo.json and plugins.json
         run: |
           mkdir -p builds
 
