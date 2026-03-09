@@ -60,8 +60,7 @@ jobs:
           git config --local user.name "GitHub Action"
           git fetch origin
           git checkout -B builds
-          cp builds/* .
-          git add -f *.cs3 repo.json plugins.json
+          git add -f builds/
           git commit -m "Update builds" || true
           git push origin builds --force
 
