@@ -25,13 +25,12 @@ class TeleflixProvider : MainAPI() {
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
-    ): HomePageResponse {
-        // Cinemeta pagination is usually skip=0, skip=100 etc. or skip is not fully supported for top.
-        // For simplicity, we just fetch the top page.
-        if (page > 1) return newHomePageResponse(request.name, emptyList(), false)
-
-        val response = app.get(request.data).text
-        val catalog = parseJson<CinemetaCatalog>(response)
+    ): HomePageResponse? {
+        val skip = (page - 1) * 50
+        val url = if (page == 1) request.data else request.data.replace(".json", "/skip=$skip.json")
+        
+        val response = try { app.get(url).text } catch (e: Exception) { return null }
+        val catalog = try { parseJson<CinemetaCatalog>(response) } catch (e: Exception) { return null }
 
         val items = catalog.metas.map { meta ->
             val isMovie = meta.type == "movie"
@@ -40,7 +39,7 @@ class TeleflixProvider : MainAPI() {
             }
         }
 
-        return newHomePageResponse(request.name, items, false)
+        return newHomePageResponse(request.name, items, items.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -65,10 +64,11 @@ class TeleflixProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("/")
-        var type = url.substringBeforeLast("/")
+        val parts = url.split("/").filter { it.isNotEmpty() }
+        val id = parts.last()
+        var type = if (parts.size > 1) parts[parts.size - 2] else id
         
-        if (type == id) {
+        if (type == id || (type != "movie" && type != "series")) {
             // Backward compatibility for old bookmarks without type prefix
             val checkUrl = "$mainUrl/meta/series/$id.json"
             val checkMeta = try { parseJson<CinemetaMetaResponse>(app.get(checkUrl).text).meta } catch (e: Exception) { null }

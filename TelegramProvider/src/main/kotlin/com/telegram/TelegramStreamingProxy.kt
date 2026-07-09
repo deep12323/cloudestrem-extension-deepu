@@ -99,21 +99,19 @@ object TelegramStreamingProxy {
             if (isThumbnail) {
                 serveThumbnail(fileId, output)
             } else {
-                activeStreams[fileId] = (activeStreams[fileId] ?: 0) + 1
+                activeStreams.compute(fileId) { _, v -> (v ?: 0) + 1 }
                 try {
                     streamFile(fileId, rangeHeader, output)
                 } finally {
-                    val count = (activeStreams[fileId] ?: 1) - 1
+                    val count = activeStreams.compute(fileId) { _, v -> (v ?: 1) - 1 } ?: 0
                     if (count <= 0) {
                         activeStreams.remove(fileId)
                         scope.launch {
                             delay(5000)
-                            if (!activeStreams.containsKey(fileId)) {
+                            if ((activeStreams[fileId] ?: 0) <= 0) {
                                 deleteFile(fileId)
                             }
                         }
-                    } else {
-                        activeStreams[fileId] = count
                     }
                 }
             }
@@ -153,6 +151,15 @@ object TelegramStreamingProxy {
         val end = rangeEnd ?: (totalSize - 1L)
         val length = end - start + 1
 
+        val ext = localPath?.substringAfterLast('.', "")?.lowercase() ?: ""
+        val mimeType = when (ext) {
+            "mkv" -> "video/x-matroska"
+            "webm" -> "video/webm"
+            "avi" -> "video/x-msvideo"
+            "mov" -> "video/quicktime"
+            else -> "video/mp4"
+        }
+
         val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
         val headers = StringBuilder().apply {
             append("HTTP/1.1 $status\r\n")
@@ -161,7 +168,7 @@ object TelegramStreamingProxy {
             if (rangeHeader != null) {
                 append("Content-Range: bytes $start-$end/$totalSize\r\n")
             }
-            append("Content-Type: video/mp4\r\n")
+            append("Content-Type: $mimeType\r\n")
             append("Connection: close\r\n\r\n")
         }.toString()
 

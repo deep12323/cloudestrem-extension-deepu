@@ -18,6 +18,13 @@ class TelegramProvider : MainAPI() {
     override var lang = "en"
     override val hasMainPage = true
 
+    override val mainPage: List<MainPageData>
+        get() {
+            val context = try { TelegramRepository.getContext() } catch (e: Exception) { return emptyList() }
+            val channels = TelegramRepository.getCustomChannels(context)
+            return channels.map { mainPageData(it.toString(), "Channel") }
+        }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
@@ -26,44 +33,26 @@ class TelegramProvider : MainAPI() {
             return null
         }
 
-        val context = TelegramRepository.getContext()
-        val channels = TelegramRepository.getCustomChannels(context)
-        if (channels.isEmpty()) {
-            return null
-        }
+        val chanId = request.data.toLongOrNull() ?: return null
+        val result = TelegramRepository.getChannelVideos(chanId, page) ?: return null
+        val title = result.first
+        val videos = result.second
 
-        val homePages = mutableListOf<HomePageList>()
-        var hasMore = false
-        
-        for (chan in channels) {
-            val result = TelegramRepository.getChannelVideos(chan, page) ?: continue
-            val title = result.first
-            val videos = result.second
-
-            if (videos.isNotEmpty()) {
-                hasMore = true
-            }
-
-            val searchResponses = videos.mapNotNull { msg ->
-                val fileId = msg.fileId
-                val size = msg.fileSize
-                val name = msg.fileName
-                val thumbId = msg.thumbnailFileId?.toString() ?: ""
-                val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}&thumbnailFileId=$thumbId"
-                
-                val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-                
-                newMovieSearchResponse(name, url, TvType.Movie) {
-                    this.posterUrl = poster
-                }
-            }
-
-            if (searchResponses.isNotEmpty()) {
-                homePages.add(HomePageList(title, searchResponses))
+        val searchResponses = videos.mapNotNull { msg ->
+            val fileId = msg.fileId
+            val size = msg.fileSize
+            val name = msg.fileName
+            val thumbId = msg.thumbnailFileId?.toString() ?: ""
+            val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}&thumbnailFileId=$thumbId"
+            
+            val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+            
+            newMovieSearchResponse(name, url, TvType.Movie) {
+                this.posterUrl = poster
             }
         }
 
-        return newHomePageResponse(homePages, hasNext = hasMore)
+        return newHomePageResponse(title, searchResponses, hasNext = searchResponses.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
