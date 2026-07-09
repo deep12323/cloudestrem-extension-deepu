@@ -172,11 +172,12 @@ class TeleflixProvider : MainAPI() {
                     source = "Telegram",
                     name = "${msg.fileName} ($sizeStr)",
                     url = streamUrl,
-                    referer = "",
-                    quality = getQualityFromName(msg.fileName),
-                    isM3u8 = false,
                     type = ExtractorLinkType.VIDEO
-                )
+                ) {
+                    this.referer = ""
+                    this.quality = getQualityFromName(msg.fileName)
+                    this.isM3u8 = false
+                }
             )
         }
 
