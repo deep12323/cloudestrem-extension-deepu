@@ -91,7 +91,7 @@ object TelegramRepository {
         }
     }
 
-    suspend fun getChannelVideos(identifier: String, limit: Int = 30): Pair<String, List<TelegramVideoMessage>>? {
+    suspend fun getChannelVideos(identifier: String, page: Int, limit: Int = 50): Pair<String, List<TelegramVideoMessage>>? {
         val chatId = getChatId(identifier) ?: return null
 
         val title: String
@@ -112,6 +112,8 @@ object TelegramRepository {
             TdApi.SearchMessagesFilterVideo()
         )
 
+        val pageOffset = (page - 1) * limit
+
         for (filter in filters) {
             try {
                 val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
@@ -119,7 +121,7 @@ object TelegramRepository {
                     req.query = ""
                     req.senderId = null
                     req.fromMessageId = 0
-                    req.offset = 0
+                    req.offset = pageOffset
                     req.limit = limit
                     req.filter = filter
                     req.topicId = null

@@ -33,10 +33,16 @@ class TelegramProvider : MainAPI() {
         }
 
         val homePages = mutableListOf<HomePageList>()
+        var hasMore = false
+        
         for (chan in channels) {
-            val result = TelegramRepository.getChannelVideos(chan) ?: continue
+            val result = TelegramRepository.getChannelVideos(chan, page) ?: continue
             val title = result.first
             val videos = result.second
+
+            if (videos.isNotEmpty()) {
+                hasMore = true
+            }
 
             val searchResponses = videos.mapNotNull { msg ->
                 val fileId = msg.fileId
@@ -57,7 +63,7 @@ class TelegramProvider : MainAPI() {
             }
         }
 
-        return newHomePageResponse(homePages)
+        return newHomePageResponse(homePages, hasNext = hasMore)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
