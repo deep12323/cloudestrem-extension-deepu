@@ -164,10 +164,11 @@ object TelegramRepository {
                         ))
                     }
                 }
+                }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Search messages failed for channel $identifier: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Search messages failed for channel $identifier: ${e.message}")
-        }
         }
         return title to results
     }
