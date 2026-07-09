@@ -13,6 +13,7 @@ class TelegramPlugin : Plugin() {
 
         // Register the main provider API
         registerMainAPI(TelegramProvider())
+        registerMainAPI(TeleflixProvider())
 
         // Hook up the plugin settings button to show the bottom sheet dialog
         openSettings = { ctx ->

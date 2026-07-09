@@ -141,10 +141,12 @@ class TelegramProvider : MainAPI() {
         }
     }
 
-    private fun formatBytes(bytes: Long): String = when {
-        bytes <= 0 -> "0 B"
-        bytes >= 1_000_000_000 -> "%.2f GB".format(bytes / 1_000_000_000.0)
-        bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
-        else -> "%.0f KB".format(bytes / 1_000.0)
+    companion object {
+        fun formatBytes(bytes: Long): String = when {
+            bytes < 1024 -> "$bytes B"
+            bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+            bytes < 1024 * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
+            else -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+        }
     }
 }
