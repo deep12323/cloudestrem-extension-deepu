@@ -3,6 +3,7 @@ package com.telegram
 import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import java.net.URLEncoder
 import kotlinx.coroutines.async
@@ -115,16 +116,16 @@ class TelegramProvider : MainAPI() {
         val streamUrl = TelegramRepository.getStreamUrl(fileId)
         val quality = parseQuality(name)
 
-        callback(
-            newExtractorLink(
-                source = "Telegram",
-                name = name,
-                url = streamUrl,
-                referer = "",
-                quality = quality,
-                isM3u8 = false
-            )
-        )
+        val link = newExtractorLink(
+            name = name,
+            source = "Telegram",
+            url = streamUrl,
+            type = ExtractorLinkType.VIDEO
+        ) {
+            this.referer = ""
+            this.quality = quality
+        }
+        callback(link)
         return true
     }
 
