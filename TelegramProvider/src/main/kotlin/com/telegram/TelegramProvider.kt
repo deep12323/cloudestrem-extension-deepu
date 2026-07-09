@@ -22,7 +22,9 @@ class TelegramProvider : MainAPI() {
         get() {
             val context = try { TelegramRepository.getContext() } catch (e: Exception) { return emptyList() }
             val channels = TelegramRepository.getCustomChannels(context)
-            return channels.map { mainPageData(it.toString(), "Channel") }
+            return mainPageOf(
+                *channels.map { it.toString() to "Channel" }.toTypedArray()
+            )
         }
 
     override suspend fun getMainPage(
@@ -33,7 +35,7 @@ class TelegramProvider : MainAPI() {
             return null
         }
 
-        val chanId = request.data.toLongOrNull() ?: return null
+        val chanId = request.data
         val result = TelegramRepository.getChannelVideos(chanId, page) ?: return null
         val title = result.first
         val videos = result.second

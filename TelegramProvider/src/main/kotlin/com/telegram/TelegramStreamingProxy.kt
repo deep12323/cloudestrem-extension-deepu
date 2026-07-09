@@ -99,13 +99,19 @@ object TelegramStreamingProxy {
             if (isThumbnail) {
                 serveThumbnail(fileId, output)
             } else {
-                activeStreams.compute(fileId) { _, v -> (v ?: 0) + 1 }
+                synchronized(activeStreams) {
+                    activeStreams[fileId] = (activeStreams[fileId] ?: 0) + 1
+                }
                 try {
                     streamFile(fileId, rangeHeader, output)
                 } finally {
-                    val count = activeStreams.compute(fileId) { _, v -> (v ?: 1) - 1 } ?: 0
+                    val count = synchronized(activeStreams) {
+                        val current = (activeStreams[fileId] ?: 1) - 1
+                        activeStreams[fileId] = current
+                        current
+                    }
                     if (count <= 0) {
-                        activeStreams.remove(fileId)
+                        synchronized(activeStreams) { activeStreams.remove(fileId) }
                         scope.launch {
                             delay(5000)
                             if ((activeStreams[fileId] ?: 0) <= 0) {
@@ -157,6 +163,9 @@ object TelegramStreamingProxy {
             "webm" -> "video/webm"
             "avi" -> "video/x-msvideo"
             "mov" -> "video/quicktime"
+            "flv" -> "video/x-flv"
+            "wmv" -> "video/x-ms-wmv"
+            "ts", "m2ts" -> "video/mp2t"
             else -> "video/mp4"
         }
 
