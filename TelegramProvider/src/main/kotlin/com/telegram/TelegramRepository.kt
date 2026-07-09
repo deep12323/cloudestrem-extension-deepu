@@ -172,6 +172,9 @@ object TelegramRepository {
                 Log.e(TAG, "Search messages failed for channel $identifier: ${e.message}")
             }
         }
+        
+        results.sortByDescending { it.messageId }
+
         return title to results
     }
 
@@ -266,6 +269,7 @@ object TelegramRepository {
                     }
                 }
             }
+            results.sortByDescending { it.messageId }
             return results
         }
         
@@ -340,6 +344,7 @@ object TelegramRepository {
             }
         }
         
+        results.sortByDescending { it.messageId }
         return results
     }
 
