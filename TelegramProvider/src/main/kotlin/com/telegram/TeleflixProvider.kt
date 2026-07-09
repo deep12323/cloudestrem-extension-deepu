@@ -5,6 +5,8 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.drinkless.tdlib.TdApi
 
 class TeleflixProvider : MainAPI() {
@@ -173,7 +175,7 @@ class TeleflixProvider : MainAPI() {
                     referer = "",
                     quality = getQualityFromName(msg.fileName),
                     isM3u8 = false,
-                    headers = emptyMap()
+                    type = ExtractorLinkType.VIDEO
                 )
             )
         }
