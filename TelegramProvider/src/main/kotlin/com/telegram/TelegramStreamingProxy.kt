@@ -61,7 +61,7 @@ object TelegramStreamingProxy {
         Log.d(TAG, "Streaming proxy stopped")
     }
 
-    private fun handleClient(socket: Socket) {
+    private suspend fun handleClient(socket: Socket) {
         try {
             socket.soTimeout = 30000
             val reader = socket.getInputStream().bufferedReader()
@@ -94,7 +94,7 @@ object TelegramStreamingProxy {
         } catch (e: Exception) {
             Log.e(TAG, "Error handling client: ${e.message}", e)
         } finally {
-            try { socket.close() } catch (_) {}
+            try { socket.close() } catch (_: Exception) {}
         }
     }
 

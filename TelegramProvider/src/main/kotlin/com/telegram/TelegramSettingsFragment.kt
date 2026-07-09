@@ -82,7 +82,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
             is TelegramAuthState.Idle -> {
                 val tv = TextView(context).apply {
                     text = "You are not connected to Telegram. Click below to start authentication."
-                    setTextColor(Color.LIGHTGRAY)
+                    setTextColor(Color.LTGRAY)
                 }
                 val btn = Button(context).apply {
                     text = "Login with Telegram"
@@ -221,7 +221,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
 
                 val cacheText = TextView(context).apply {
                     text = "Cache Size: Calculating..."
-                    setTextColor(Color.LIGHTGRAY)
+                    setTextColor(Color.LTGRAY)
                 }
                 viewLifecycleOwner.lifecycleScope.launch {
                     val size = TelegramRepository.getCacheSize(context)
