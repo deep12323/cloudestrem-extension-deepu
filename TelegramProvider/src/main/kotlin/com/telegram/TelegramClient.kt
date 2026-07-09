@@ -98,7 +98,8 @@ object TelegramClient {
                 }
 
                 val versionSuffix = if (targetEntry.crc >= 0) targetEntry.crc.toString(16) else targetEntry.size.toString()
-                val targetFile = File(nativeDir, "libtdjni-$abi-$versionSuffix.so")
+                val classLoaderHash = TelegramClient::class.java.classLoader?.hashCode()?.toString(16) ?: "unknown"
+                val targetFile = File(nativeDir, "libtdjni-$abi-$versionSuffix-$classLoaderHash.so")
                 stepLog(
                     context,
                     "destFile path is ${targetFile.absolutePath}, exists=${targetFile.exists()}, length=${targetFile.length()}"
@@ -284,8 +285,8 @@ object TelegramClient {
         try { File(context.filesDir, "tdlib_init_log.txt").delete() } catch (_: Throwable) {}
 
     private fun sendTdlibParameters(context: Context) {
-        val dbDir = File(context.filesDir, "tdlib").absolutePath
-        val filesDir = File(context.filesDir, "tdlib_files").absolutePath
+        val dbDir = File(context.applicationContext.filesDir, "tdlib").absolutePath
+        val filesDir = File(context.applicationContext.filesDir, "tdlib_files").absolutePath
         client?.send(TdApi.SetTdlibParameters().also { p ->
             p.apiId = TelegramConfig.API_ID
             p.apiHash = TelegramConfig.API_HASH
