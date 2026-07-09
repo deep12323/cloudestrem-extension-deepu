@@ -1,6 +1,7 @@
 package com.telegram
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +44,7 @@ object TelegramClient {
         if (libraryLoadError != null) return false
         if (isLibraryLoaded) return true
 
+        stepLog(context, nativeDiagnostics(context))
         stepLog(context, "trying System.loadLibrary(tdjni)")
         try {
             System.loadLibrary("tdjni")
@@ -88,6 +90,7 @@ object TelegramClient {
                 val targetEntry = foundEntry ?: throw Exception("No compatible ABI found in plugin lib/ directories")
                 val abi = foundAbi ?: throw Exception("Matched native library ABI was not recorded")
                 stepLog(context, "target entry size=${targetEntry.size}, crc=${targetEntry.crc}")
+                stepLog(context, "target entry compressedSize=${targetEntry.compressedSize}, method=${targetEntry.method}")
 
                 val nativeDir = nativeLibraryDir(context)
                 if (!nativeDir.exists() && !nativeDir.mkdirs()) {
@@ -137,6 +140,7 @@ object TelegramClient {
         } catch (e: Throwable) {
             val err = "Failed to extract and load: ${e.message}"
             stepLog(context, "ERROR: $err")
+            stepLog(context, "ERROR STACK: ${Log.getStackTraceString(e)}")
             Log.e(TAG, err, e)
             libraryLoadError = err
             clearNativeLibraryCache(context)
@@ -173,6 +177,29 @@ object TelegramClient {
     fun clearNativeLibraryCache(context: Context) {
         try { File(context.filesDir, NATIVE_LIB_NAME).delete() } catch (_: Throwable) {}
         try { nativeLibraryDir(context).deleteRecursively() } catch (_: Throwable) {}
+    }
+
+    private fun nativeDiagnostics(context: Context): String {
+        val nativeDir = nativeLibraryDir(context)
+        val nativeFiles = nativeDir.listFiles()
+            ?.sortedBy { it.name }
+            ?.joinToString(separator = "; ") { file ->
+                "${file.name}(length=${file.length()}, canRead=${file.canRead()}, canExecute=${file.canExecute()}, canWrite=${file.canWrite()})"
+            }
+            ?: "<none>"
+
+        return buildString {
+            append("diagnostics: ")
+            append("package=${context.packageName}, ")
+            append("sdk=${Build.VERSION.SDK_INT}, ")
+            append("device=${Build.MANUFACTURER} ${Build.MODEL}, ")
+            append("supportedAbis=${Build.SUPPORTED_ABIS.joinToString("/")}, ")
+            append("filesDir=${context.filesDir.absolutePath}, ")
+            append("codeCacheDir=${context.codeCacheDir.absolutePath}, ")
+            append("nativeDir=${nativeDir.absolutePath}, ")
+            append("nativeFiles=$nativeFiles, ")
+            append("classLoader=${TelegramClient::class.java.classLoader}")
+        }
     }
 
     fun initialize(context: Context) {
@@ -214,6 +241,7 @@ object TelegramClient {
             } catch (e: Throwable) {
                 Log.e(TAG, "TDLib Client.create failed", e)
                 stepLog(context, "EXCEPTION: ${e.message}")
+                stepLog(context, "EXCEPTION STACK: ${Log.getStackTraceString(e)}")
                 _authState.value = TelegramAuthState.Error("TDLib initialization failed: ${e.message}")
             }
         }
@@ -223,13 +251,34 @@ object TelegramClient {
         Log.d(TAG, "STEP: $step")
         try {
             File(context.filesDir, "tdlib_init_log.txt")
-                .appendText("${System.currentTimeMillis()} $step\n")
+                .appendText("${System.currentTimeMillis()} [${Thread.currentThread().name}] $step\n")
         } catch (_: Throwable) {}
     }
 
-    fun readInitLog(context: Context): String =
-        try { File(context.filesDir, "tdlib_init_log.txt").readText().takeLast(2000) }
+    private fun readInitLogFile(context: Context): String =
+        try { File(context.filesDir, "tdlib_init_log.txt").readText() }
         catch (_: Throwable) { "" }
+
+    fun readInitLog(context: Context, maxChars: Int = 2_000): String =
+        readInitLogFile(context).takeLast(maxChars)
+
+    fun readDetailedInitLog(context: Context): String {
+        return buildDetailedInitLog(context, readInitLog(context, 16_000)).takeLast(20_000)
+    }
+
+    fun readAllDetailedInitLog(context: Context): String =
+        buildDetailedInitLog(context, readInitLogFile(context))
+
+    private fun buildDetailedInitLog(context: Context, initLog: String): String {
+        return buildString {
+            appendLine("Diagnostic Snapshot:")
+            appendLine(nativeDiagnostics(context))
+            appendLine("isLibraryLoaded=$isLibraryLoaded, isAvailable=$isAvailable, libraryLoadError=${libraryLoadError ?: "<none>"}")
+            appendLine()
+            appendLine("Initialization Log:")
+            append(if (initLog.isBlank()) "<empty>" else initLog)
+        }
+    }
 
     fun clearInitLog(context: Context) =
         try { File(context.filesDir, "tdlib_init_log.txt").delete() } catch (_: Throwable) {}

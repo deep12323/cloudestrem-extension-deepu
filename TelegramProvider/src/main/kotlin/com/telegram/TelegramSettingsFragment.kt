@@ -1,5 +1,7 @@
 package com.telegram
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
@@ -92,22 +94,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 }
                 formContainer.addView(tv, layoutParams)
                 formContainer.addView(btn, layoutParams)
-
-                val log = TelegramClient.readInitLog(context)
-                if (log.isNotEmpty()) {
-                    val logTitle = TextView(context).apply {
-                        text = "Last Initialization Log:"
-                        setTextColor(Color.WHITE)
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                    }
-                    val logTv = TextView(context).apply {
-                        text = log
-                        setTextColor(Color.YELLOW)
-                        textSize = 10f
-                    }
-                    formContainer.addView(logTitle, layoutParams)
-                    formContainer.addView(logTv, layoutParams)
-                }
+                addDetailedLogView(context, layoutParams)
             }
             is TelegramAuthState.Initializing -> {
                 val tv = TextView(context).apply {
@@ -117,6 +104,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 val p = ProgressBar(context)
                 formContainer.addView(tv, layoutParams)
                 formContainer.addView(p, layoutParams)
+                addDetailedLogView(context, layoutParams)
             }
             is TelegramAuthState.WaitPhone -> {
                 val tv = TextView(context).apply {
@@ -283,24 +271,80 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 }
                 formContainer.addView(tv, layoutParams)
                 formContainer.addView(btn, layoutParams)
-
-                val log = TelegramClient.readInitLog(context)
-                if (log.isNotEmpty()) {
-                    val logTitle = TextView(context).apply {
-                        text = "Last Initialization Log:"
-                        setTextColor(Color.WHITE)
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                    }
-                    val logTv = TextView(context).apply {
-                        text = log
-                        setTextColor(Color.YELLOW)
-                        textSize = 10f
-                    }
-                    formContainer.addView(logTitle, layoutParams)
-                    formContainer.addView(logTv, layoutParams)
-                }
+                addDetailedLogView(context, layoutParams)
             }
         }
+    }
+
+    private fun addDetailedLogView(context: Context, layoutParams: LinearLayout.LayoutParams) {
+        val logTitle = TextView(context).apply {
+            text = "Detailed Initialization Log:"
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+
+        val logTv = TextView(context).apply {
+            text = TelegramClient.readDetailedInitLog(context)
+            setTextColor(Color.YELLOW)
+            textSize = 10f
+            setTextIsSelectable(true)
+        }
+
+        val scroll = ScrollView(context).apply {
+            this.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(context, 280)
+            ).apply {
+                setMargins(0, 8, 0, 8)
+            }
+            addView(logTv)
+        }
+
+        val helperText = TextView(context).apply {
+            text = "The view shows the latest diagnostics. Copy All Logs copies the full initialization log."
+            setTextColor(Color.LTGRAY)
+            textSize = 11f
+        }
+
+        val btnRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        val refreshButton = Button(context).apply {
+            text = "Refresh Log"
+            setOnClickListener {
+                logTv.text = TelegramClient.readDetailedInitLog(context)
+            }
+        }
+
+        val copyButton = Button(context).apply {
+            text = "Copy All Logs"
+            setOnClickListener {
+                val allLogs = TelegramClient.readAllDetailedInitLog(context)
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Telegram TDLib init log", allLogs))
+                Toast.makeText(context, "All logs copied", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnRow.addView(
+            refreshButton,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        btnRow.addView(
+            copyButton,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        formContainer.addView(logTitle, layoutParams)
+        formContainer.addView(helperText, layoutParams)
+        formContainer.addView(scroll)
+        formContainer.addView(btnRow, layoutParams)
+    }
+
+    private fun dp(context: Context, value: Int): Int {
+        val scale = context.resources.displayMetrics.density
+        return (value * scale + 0.5f).toInt()
     }
 
     private fun formatBytes(bytes: Long): String = when {

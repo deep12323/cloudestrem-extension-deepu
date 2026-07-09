@@ -14,11 +14,7 @@ import java.lang.annotation.RetentionPolicy;
  */
 public class TdApi {
     static {
-        try {
-            System.loadLibrary("tdjni");
-        } catch (UnsatisfiedLinkError e) {
-            e.printStackTrace();
-        }
+        // Native library loaded dynamically by TelegramClient via Client.load(path).
     }
 
     private static final String GIT_COMMIT_HASH = "e0943d068ce90b5010f1aea946e6901e25b43bf6";
