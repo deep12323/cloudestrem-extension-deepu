@@ -25,6 +25,7 @@ object TelegramStreamingProxy {
     private var port: Int = 0
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
+    private val activeStreams = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     @Volatile private var lastStreamedFileId: Int? = null
 
     fun start() {
@@ -98,7 +99,23 @@ object TelegramStreamingProxy {
             if (isThumbnail) {
                 serveThumbnail(fileId, output)
             } else {
-                streamFile(fileId, rangeHeader, output)
+                activeStreams[fileId] = (activeStreams[fileId] ?: 0) + 1
+                try {
+                    streamFile(fileId, rangeHeader, output)
+                } finally {
+                    val count = (activeStreams[fileId] ?: 1) - 1
+                    if (count <= 0) {
+                        activeStreams.remove(fileId)
+                        scope.launch {
+                            delay(5000)
+                            if (!activeStreams.containsKey(fileId)) {
+                                deleteFile(fileId)
+                            }
+                        }
+                    } else {
+                        activeStreams[fileId] = count
+                    }
+                }
             }
         } catch (e: IOException) {
             Log.d(TAG, "Client disconnected: ${e.message}")
