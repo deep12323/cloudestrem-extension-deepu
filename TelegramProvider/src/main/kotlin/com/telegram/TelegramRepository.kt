@@ -55,6 +55,19 @@ object TelegramRepository {
         return TelegramClient.authState.value is TelegramAuthState.Ready
     }
 
+    suspend fun waitUntilAuthenticated(): Boolean {
+        var elapsed = 0L
+        val timeoutMs = 3000L
+        while (elapsed < timeoutMs) {
+            val state = TelegramClient.authState.value
+            if (state is TelegramAuthState.Ready) return true
+            if (state is TelegramAuthState.WaitPhone || state is TelegramAuthState.WaitCode || state is TelegramAuthState.WaitPassword) return false
+            kotlinx.coroutines.delay(100)
+            elapsed += 100
+        }
+        return false
+    }
+
     fun startAuth(context: Context) = TelegramClient.initialize(context)
     fun requestQrCode() = TelegramClient.requestQrCode()
     fun submitPhone(phone: String) = TelegramClient.submitPhone(phone)

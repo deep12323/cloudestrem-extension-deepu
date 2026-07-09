@@ -121,7 +121,7 @@ class TeleflixProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         // data contains the movie name or series query (e.g. "Spider-Man" or "Breaking Bad S01E01")
-        if (!TelegramRepository.isAuthenticated()) {
+        if (!TelegramRepository.waitUntilAuthenticated()) {
             throw ErrorLoadingException("Please login to Telegram in settings first!")
         }
 
@@ -151,7 +151,7 @@ class TeleflixProvider : MainAPI() {
             }
         }
         
-        val results = mutableSetOf<com.telegram.TelegramRepository.TelegramVideoMessage>()
+        val results = mutableSetOf<TelegramVideoMessage>()
         for (q in queries) {
             val res = TelegramRepository.searchVideoMessages(q, limit = 20)
             results.addAll(res)

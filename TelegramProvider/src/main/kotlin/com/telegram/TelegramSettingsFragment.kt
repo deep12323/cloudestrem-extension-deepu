@@ -161,9 +161,16 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                         }
                     }
                 }
+                val resetBtn = Button(context).apply {
+                    text = "Wrong number? Go Back"
+                    setOnClickListener {
+                        TelegramRepository.logOut()
+                    }
+                }
                 formContainer.addView(tv, layoutParams)
                 formContainer.addView(et, layoutParams)
                 formContainer.addView(btn, layoutParams)
+                formContainer.addView(resetBtn, layoutParams)
             }
             is TelegramAuthState.WaitPassword -> {
                 val tv = TextView(context).apply {
@@ -179,17 +186,24 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 val btn = Button(context).apply {
                     text = "Submit Password"
                     setOnClickListener {
-                        val pwd = et.text.toString()
-                        if (pwd.isNotEmpty()) {
-                            TelegramRepository.submitPassword(pwd)
+                        val pass = et.text.toString().trim()
+                        if (pass.isNotEmpty()) {
+                            TelegramRepository.submitPassword(pass)
                         } else {
                             Toast.makeText(context, "Please enter your password", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
+                val resetBtn = Button(context).apply {
+                    text = "Forgot password / Go Back"
+                    setOnClickListener {
+                        TelegramRepository.logOut()
+                    }
+                }
                 formContainer.addView(tv, layoutParams)
                 formContainer.addView(et, layoutParams)
                 formContainer.addView(btn, layoutParams)
+                formContainer.addView(resetBtn, layoutParams)
             }
             is TelegramAuthState.Ready -> {
                 val tv = TextView(context).apply {

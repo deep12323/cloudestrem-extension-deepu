@@ -22,7 +22,7 @@ class TelegramProvider : MainAPI() {
         page: Int,
         request: MainPageRequest
     ): HomePageResponse? {
-        if (!TelegramRepository.isAuthenticated()) {
+        if (!TelegramRepository.waitUntilAuthenticated()) {
             return null
         }
 
@@ -67,9 +67,7 @@ class TelegramProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        if (!TelegramRepository.isAuthenticated()) {
-            return emptyList()
-        }
+        if (!TelegramRepository.waitUntilAuthenticated()) return emptyList()
         val messages = TelegramRepository.searchVideoMessages(query)
         
         return messages.mapNotNull { msg ->
