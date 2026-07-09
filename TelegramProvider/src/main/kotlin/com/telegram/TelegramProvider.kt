@@ -3,6 +3,7 @@ package com.telegram
 import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import java.net.URLEncoder
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -115,7 +116,7 @@ class TelegramProvider : MainAPI() {
         val quality = parseQuality(name)
 
         callback(
-            ExtractorLink(
+            newExtractorLink(
                 source = "Telegram",
                 name = name,
                 url = streamUrl,

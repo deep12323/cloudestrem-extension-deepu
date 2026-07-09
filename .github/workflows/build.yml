@@ -22,7 +22,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Providers
-        run: ./gradlew :GramCinemaProvider:make :TelegramProvider:make
+        run: ./gradlew :TelegramProvider:make
 
       - name: Generate repo.json and plugins.json
         run: |
@@ -31,7 +31,7 @@ jobs:
           echo '{
             "name": "Deepu Repo",
             "iconUrl": "https://bollywood.eu.org/favicon.ico",
-            "description": "Gram Cinema and Telegram Extensions",
+            "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
               "https://raw.githubusercontent.com/deepu2135/TestPlugins/refs/heads/builds/plugins.json"
@@ -39,19 +39,6 @@ jobs:
           }' > builds/repo.json
 
           echo '[
-            {
-              "name": "Gram Cinema",
-              "internalName": "GramCinemaProvider",
-              "url": "https://raw.githubusercontent.com/deepu2135/TestPlugins/refs/heads/builds/GramCinemaProvider.cs3",
-              "tvTypes": ["Movie", "TvSeries"],
-              "language": "hi",
-              "iconUrl": "https://bollywood.eu.org/favicon.ico",
-              "apiVersion": 10,
-              "version": 1,
-              "authors": ["deepu2135"],
-              "status": 1,
-              "description": "Bollywood, Hollywood, Tamil & Telugu from Gram Cinema"
-            },
             {
               "name": "Telegram",
               "internalName": "TelegramProvider",
@@ -82,5 +69,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GramCinemaProvider
+          name: TelegramProvider
           path: builds/
