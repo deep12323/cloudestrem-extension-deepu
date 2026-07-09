@@ -75,7 +75,7 @@ object TelegramClient {
 
                 val targetEntry = foundEntry ?: throw Exception("No compatible ABI found in plugin lib/ directories")
 
-                if (!destFile.exists() || destFile.length() < 10_000_000) {
+                if (!destFile.exists() || destFile.length() != targetEntry.size) {
                     Log.d(TAG, "Extracting libtdjni.so from zip...")
                     destFile.setWritable(true)
                     zip.getInputStream(targetEntry).use { input ->
@@ -102,6 +102,7 @@ object TelegramClient {
             val err = "Failed to extract and load native library: ${e.message}"
             Log.e(TAG, err, e)
             libraryLoadError = err
+            try { File(context.filesDir, "libtdjni.so").delete() } catch (_: Throwable) {}
             return false
         }
     }

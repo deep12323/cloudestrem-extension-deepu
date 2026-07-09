@@ -30,7 +30,8 @@ object TelegramRepository {
         sessionMarker(context).delete()
         File(context.filesDir, "tdlib").deleteRecursively()
         File(context.filesDir, "tdlib_files").deleteRecursively()
-        Log.d(TAG, "TDLib database wiped")
+        File(context.filesDir, "libtdjni.so").delete()
+        Log.d(TAG, "TDLib database and native library wiped")
     }
 
     fun initialize(context: Context) {
