@@ -14,7 +14,7 @@ class TeleflixProvider : MainAPI() {
     override var name = "Teleflix"
     override val hasMainPage = true
     override var lang = "en"
-    override val hasDownloadSupport = false
+    override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
