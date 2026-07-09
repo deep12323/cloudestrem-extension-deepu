@@ -21,8 +21,8 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: Build GramCinemaProvider
-        run: ./gradlew :GramCinemaProvider:make
+      - name: Build Providers
+        run: ./gradlew :GramCinemaProvider:make :TelegramProvider:make
 
       - name: Generate repo.json and plugins.json
         run: |
@@ -31,7 +31,7 @@ jobs:
           echo '{
             "name": "Deepu Repo",
             "iconUrl": "https://bollywood.eu.org/favicon.ico",
-            "description": "Gram Cinema Extension",
+            "description": "Gram Cinema and Telegram Extensions",
             "manifestVersion": 1,
             "pluginLists": [
               "https://raw.githubusercontent.com/deepu2135/TestPlugins/refs/heads/builds/plugins.json"
@@ -51,6 +51,19 @@ jobs:
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Bollywood, Hollywood, Tamil & Telugu from Gram Cinema"
+            },
+            {
+              "name": "Telegram",
+              "internalName": "TelegramProvider",
+              "url": "https://raw.githubusercontent.com/deepu2135/TestPlugins/refs/heads/builds/TelegramProvider.cs3",
+              "tvTypes": ["Movie"],
+              "language": "en",
+              "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg",
+              "apiVersion": 10,
+              "version": 1,
+              "authors": ["Antigravity"],
+              "status": 1,
+              "description": "Stream any media from your Telegram chats and channels on-demand"
             }
           ]' > builds/plugins.json
 
