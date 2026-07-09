@@ -107,14 +107,12 @@ object TelegramRepository {
     suspend fun getChannelVideos(identifier: String, page: Int, limit: Int = 50): Pair<String, List<TelegramVideoMessage>>? {
         val chatId = getChatId(identifier) ?: return null
 
-        val title: String
-        
+        var title = identifier
         try {
             val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
-            title = chat?.title ?: identifier
+            if (chat != null) title = chat.title
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load channel $identifier: ${e.message}")
-            return null
+            Log.w(TAG, "Failed to load title for channel $identifier: ${e.message}")
         }
         
         val results = mutableListOf<TelegramVideoMessage>()
@@ -145,8 +143,10 @@ object TelegramRepository {
             when (val content = msg.content) {
                 is TdApi.MessageDocument -> {
                     val mime = content.document.mimeType ?: ""
-                    if (!mime.startsWith("video/") && mime != "application/x-matroska") continue
                     val filename = content.document.fileName ?: "Default_Name.mkv"
+                    val ext = filename.substringAfterLast('.', "").lowercase()
+                    val isVideo = mime.startsWith("video/") || mime.contains("matroska") || ext in listOf("mkv", "mp4", "avi", "mov", "flv", "wmv", "webm")
+                    if (!isVideo) continue
                     val key = filename to content.document.document.size
                     if (seen.add(key)) {
                         results.add(TelegramVideoMessage(
@@ -216,87 +216,16 @@ object TelegramRepository {
         limit: Int = 50
     ): List<TelegramVideoMessage> {
         val results = mutableListOf<TelegramVideoMessage>()
-        
-        // Search globally if no custom channels
-        if (cachedCustomChannels.isEmpty()) {
-            val filters = listOf(
-                TdApi.SearchMessagesFilterDocument(),
-                TdApi.SearchMessagesFilterVideo()
-            )
-            val seen = mutableSetOf<Pair<String, Long>>() // dedupe by (fileName, fileSize)
+        val seen = mutableSetOf<Pair<String, Long>>()
 
-            for (filter in filters) {
-                val result = try {
-                    TelegramClient.sendRequest(TdApi.SearchMessages().also { req ->
-                        req.chatList = null  // null = search all chats
-                        req.query = query
-                        req.offset = ""
-                        req.limit = limit
-                        req.filter = filter
-                    })
-                } catch (e: Exception) {
-                    Log.e(TAG, "SearchMessages error: ${e.message}")
-                    null
-                }
-                val found = (result as? TdApi.FoundMessages) ?: continue
+        val filters = listOf(
+            TdApi.SearchMessagesFilterDocument(),
+            TdApi.SearchMessagesFilterVideo()
+        )
 
-                for (msg in found.messages) {
-                    when (val content = msg.content) {
-                        is TdApi.MessageDocument -> {
-                            val mime = content.document.mimeType ?: ""
-                            if (!mime.startsWith("video/") && mime != "application/x-matroska") continue
-                            val filename = content.document.fileName ?: "Default_Name.mkv"
-                            val key = filename to content.document.document.size
-                            if (seen.add(key)) {
-                                results.add(TelegramVideoMessage(
-                                    messageId = msg.id,
-                                    chatId = msg.chatId,
-                                    fileName = filename,
-                                    fileId = content.document.document.id,
-                                    fileSize = content.document.document.size,
-                                    duration = 0,
-                                    mimeType = mime,
-                                    caption = content.caption?.text ?: "",
-                                    thumbnailFileId = content.document.thumbnail?.file?.id
-                                ))
-                            }
-                        }
-                        is TdApi.MessageVideo -> {
-                            val filename = content.video.fileName ?: "Default_Name.mp4"
-                            val key = filename to content.video.video.size
-                            if (seen.add(key)) {
-                                results.add(TelegramVideoMessage(
-                                    messageId = msg.id,
-                                    chatId = msg.chatId,
-                                    fileName = filename,
-                                    fileId = content.video.video.id,
-                                    fileSize = content.video.video.size,
-                                    duration = content.video.duration,
-                                    mimeType = content.video.mimeType ?: "video/mp4",
-                                    caption = content.caption?.text ?: "",
-                                    thumbnailFileId = content.video.thumbnail?.file?.id
-                                ))
-                            }
-                        }
-                        else -> continue
-                    }
-                }
-            }
-            results.sortByDescending { it.messageId }
-            return results
-        }
-        
-        // If we have custom channels, search within them directly!
+        // 1. Search specifically in custom channels (works even if not joined, if public)
         for (chan in cachedCustomChannels) {
             val chatId = getChatId(chan) ?: continue
-            
-            val filters = listOf(
-                TdApi.SearchMessagesFilterDocument(),
-                TdApi.SearchMessagesFilterVideo()
-            )
-
-            val seen = mutableSetOf<Pair<String, Long>>()
-
             for (filter in filters) {
                 try {
                     val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
@@ -309,56 +238,80 @@ object TelegramRepository {
                         req.filter = filter
                         req.topicId = null
                     })
-                    
                     val found = (historyResult as? TdApi.FoundChatMessages) ?: continue
                     for (msg in found.messages) {
-                        when (val content = msg.content) {
-                            is TdApi.MessageDocument -> {
-                                val mime = content.document.mimeType ?: ""
-                                if (!mime.startsWith("video/") && mime != "application/x-matroska") continue
-                                val filename = content.document.fileName ?: "Default_Name.mkv"
-                                val key = filename to content.document.document.size
-                                if (seen.add(key)) {
-                                    results.add(TelegramVideoMessage(
-                                        messageId = msg.id,
-                                        chatId = msg.chatId,
-                                        fileName = filename,
-                                        fileId = content.document.document.id,
-                                        fileSize = content.document.document.size,
-                                        duration = 0,
-                                        mimeType = mime,
-                                        caption = content.caption?.text ?: "",
-                                        thumbnailFileId = content.document.thumbnail?.file?.id
-                                    ))
-                                }
-                            }
-                            is TdApi.MessageVideo -> {
-                                val filename = content.video.fileName ?: "Default_Name.mp4"
-                                val key = filename to content.video.video.size
-                                if (seen.add(key)) {
-                                    results.add(TelegramVideoMessage(
-                                        messageId = msg.id,
-                                        chatId = msg.chatId,
-                                        fileName = filename,
-                                        fileId = content.video.video.id,
-                                        fileSize = content.video.video.size,
-                                        duration = content.video.duration,
-                                        mimeType = content.video.mimeType ?: "video/mp4",
-                                        caption = content.caption?.text ?: "",
-                                        thumbnailFileId = content.video.thumbnail?.file?.id
-                                    ))
-                                }
-                            }
-                        }
+                        extractVideoMessage(msg, seen, results)
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Search messages failed for channel $chan: ${e.message}")
+                    Log.e(TAG, "SearchChatMessages error for $chan: ${e.message}")
                 }
             }
         }
-        
+
+        // 2. Search globally across all joined chats
+        for (filter in filters) {
+            try {
+                val result = TelegramClient.sendRequest(TdApi.SearchMessages().also { req ->
+                    req.chatList = null  // null = search all chats
+                    req.query = query
+                    req.offset = ""
+                    req.limit = limit
+                    req.filter = filter
+                })
+                val found = (result as? TdApi.FoundMessages) ?: continue
+                for (msg in found.messages) {
+                    extractVideoMessage(msg, seen, results)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "SearchMessages error: ${e.message}")
+            }
+        }
+
         results.sortByDescending { it.messageId }
         return results
+    }
+
+    private fun extractVideoMessage(msg: TdApi.Message, seen: MutableSet<Pair<String, Long>>, results: MutableList<TelegramVideoMessage>) {
+        when (val content = msg.content) {
+            is TdApi.MessageDocument -> {
+                val mime = content.document.mimeType ?: ""
+                val filename = content.document.fileName ?: "Default_Name.mkv"
+                val ext = filename.substringAfterLast('.', "").lowercase()
+                val isVideo = mime.startsWith("video/") || mime.contains("matroska") || ext in listOf("mkv", "mp4", "avi", "mov", "flv", "wmv", "webm")
+                if (!isVideo) return
+                val key = filename to content.document.document.size
+                if (seen.add(key)) {
+                    results.add(TelegramVideoMessage(
+                        messageId = msg.id,
+                        chatId = msg.chatId,
+                        fileName = filename,
+                        fileId = content.document.document.id,
+                        fileSize = content.document.document.size,
+                        duration = 0,
+                        mimeType = mime,
+                        caption = content.caption?.text ?: "",
+                        thumbnailFileId = content.document.thumbnail?.file?.id
+                    ))
+                }
+            }
+            is TdApi.MessageVideo -> {
+                val filename = content.video.fileName ?: "Default_Name.mp4"
+                val key = filename to content.video.video.size
+                if (seen.add(key)) {
+                    results.add(TelegramVideoMessage(
+                        messageId = msg.id,
+                        chatId = msg.chatId,
+                        fileName = filename,
+                        fileId = content.video.video.id,
+                        fileSize = content.video.video.size,
+                        duration = content.video.duration,
+                        mimeType = content.video.mimeType ?: "video/mp4",
+                        caption = content.caption?.text ?: "",
+                        thumbnailFileId = content.video.thumbnail?.file?.id
+                    ))
+                }
+            }
+        }
     }
 
     fun getStreamUrl(fileId: Int): String = TelegramStreamingProxy.getUrl(fileId)
