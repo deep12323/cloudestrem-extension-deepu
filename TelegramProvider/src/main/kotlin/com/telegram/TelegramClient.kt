@@ -49,7 +49,7 @@ object TelegramClient {
         }
 
         try {
-            val manifestUrl = TelegramClient::class.java.classLoader.getResource("manifest.json")?.toString()
+            val manifestUrl = TelegramClient::class.java.classLoader?.getResource("manifest.json")?.toString()
             if (manifestUrl == null || !manifestUrl.startsWith("jar:file:")) {
                 throw Exception("Could not locate plugin file path (url: $manifestUrl)")
             }
@@ -97,9 +97,11 @@ object TelegramClient {
 
     fun initialize(context: Context) {
         if (client != null) return
-        loadNativeLibrary(context)
+        _authState.value = TelegramAuthState.Initializing
         scope.launch {
             if (client != null) return@launch
+            stepLog(context, "loading native library")
+            loadNativeLibrary(context)
             stepLog(context, "checking library availability")
             if (!isAvailable) {
                 _authState.value = TelegramAuthState.Error(libraryLoadError ?: "TDLib native library not available")
