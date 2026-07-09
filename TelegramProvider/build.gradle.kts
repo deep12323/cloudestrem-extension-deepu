@@ -77,6 +77,11 @@ tasks.findByName("make")?.apply {
             cs3File.delete()
             tempFile.renameTo(cs3File)
             println("JNI libraries successfully appended to cs3 file!")
+
+            // Copy the updated cs3 to the root builds/ directory
+            val rootBuildsFile = rootProject.file("builds/${cs3File.name}")
+            cs3File.copyTo(rootBuildsFile, overwrite = true)
+            println("Updated cs3 file successfully copied to root builds: ${rootBuildsFile.absolutePath}")
         }
     }
 }
