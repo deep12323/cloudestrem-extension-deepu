@@ -75,10 +75,15 @@ object TelegramClient {
 
                 val targetEntry = foundEntry ?: throw Exception("No compatible ABI found in plugin lib/ directories")
 
-                zip.getInputStream(targetEntry).use { input ->
-                    destFile.outputStream().use { output ->
-                        input.copyTo(output)
+                if (!destFile.exists() || destFile.length() != targetEntry.size) {
+                    Log.d(TAG, "Extracting libtdjni.so from zip...")
+                    zip.getInputStream(targetEntry).use { input ->
+                        destFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
                     }
+                } else {
+                    Log.d(TAG, "libtdjni.so already exists and size matches, skipping extraction")
                 }
             }
 
@@ -100,6 +105,7 @@ object TelegramClient {
         _authState.value = TelegramAuthState.Initializing
         scope.launch {
             if (client != null) return@launch
+            clearInitLog(context)
             stepLog(context, "loading native library")
             loadNativeLibrary(context)
             stepLog(context, "checking library availability")
@@ -110,6 +116,11 @@ object TelegramClient {
             stepLog(context, "library loaded OK")
             _authState.value = TelegramAuthState.Initializing
             try {
+                val dbDir = File(context.filesDir, "tdlib")
+                val filesDir = File(context.filesDir, "tdlib_files")
+                if (!dbDir.exists()) dbDir.mkdirs()
+                if (!filesDir.exists()) filesDir.mkdirs()
+
                 stepLog(context, "calling Client.create")
                 client = Client.create(
                     { update -> handleUpdate(context, update) },
@@ -150,10 +161,14 @@ object TelegramClient {
             p.apiHash = TelegramConfig.API_HASH
             p.databaseDirectory = dbDir
             p.filesDirectory = filesDir
+            p.databaseEncryptionKey = ByteArray(0)
+            p.useFileDatabase = true
+            p.useChatInfoDatabase = true
             p.useMessageDatabase = true // We want to enable message database to search globally efficiently
             p.useSecretChats = false
             p.systemLanguageCode = "en"
             p.deviceModel = "Android Device"
+            p.systemVersion = "Android"
             p.applicationVersion = "1.0"
         }, null)
     }

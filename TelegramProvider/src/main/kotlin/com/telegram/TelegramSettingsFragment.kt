@@ -92,6 +92,22 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 }
                 formContainer.addView(tv, layoutParams)
                 formContainer.addView(btn, layoutParams)
+
+                val log = TelegramClient.readInitLog(context)
+                if (log.isNotEmpty()) {
+                    val logTitle = TextView(context).apply {
+                        text = "Last Initialization Log:"
+                        setTextColor(Color.WHITE)
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    }
+                    val logTv = TextView(context).apply {
+                        text = log
+                        setTextColor(Color.YELLOW)
+                        textSize = 10f
+                    }
+                    formContainer.addView(logTitle, layoutParams)
+                    formContainer.addView(logTv, layoutParams)
+                }
             }
             is TelegramAuthState.Initializing -> {
                 val tv = TextView(context).apply {
@@ -267,6 +283,22 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 }
                 formContainer.addView(tv, layoutParams)
                 formContainer.addView(btn, layoutParams)
+
+                val log = TelegramClient.readInitLog(context)
+                if (log.isNotEmpty()) {
+                    val logTitle = TextView(context).apply {
+                        text = "Last Initialization Log:"
+                        setTextColor(Color.WHITE)
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    }
+                    val logTv = TextView(context).apply {
+                        text = log
+                        setTextColor(Color.YELLOW)
+                        textSize = 10f
+                    }
+                    formContainer.addView(logTitle, layoutParams)
+                    formContainer.addView(logTv, layoutParams)
+                }
             }
         }
     }
