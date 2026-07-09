@@ -110,7 +110,7 @@ object TelegramClient {
         if (client != null) return
         _authState.value = TelegramAuthState.Initializing
         clearInitLog(context)
-        stepLog(context, "loading native library")
+        stepLog(context, "loading native library (v1.5MB dex)")
         val isLoaded = loadNativeLibrary(context)
         stepLog(context, "library loaded result: $isLoaded")
         if (!isLoaded) {
@@ -245,7 +245,7 @@ object TelegramClient {
     }
 
     fun submitPhone(phone: String) {
-        client?.send(TdApi.SetAuthenticationPhoneNumber(phone, null), null)
+        client?.send(TdApi.SetAuthenticationPhoneNumber(phone, TdApi.PhoneNumberAuthenticationSettings(false, false, false, false, false, null, emptyArray())), null)
     }
 
     fun submitCode(code: String) {
