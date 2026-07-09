@@ -1,59 +1,32 @@
-**⚠️ This is currently under development, dont use it yet if you're not comfortable with constantly merging new changes**
+# Telegram Cloudstream Plugin
 
-# `Cloudstream3 Plugin Repo Template`
+A powerful, native [Cloudstream 3](https://github.com/recloudstream/cloudstream) plugin that transforms your Telegram account into an on-demand streaming service.
 
-Template for a [Cloudstream3](https://github.com/recloudstream) plugin repo
+## 🚀 Features
 
-**⚠️ Make sure you check "Include all branches" when using this template**
+- **Progressive Streaming**: Stream large media files (movies, shows, videos) instantly without waiting for the entire file to download.
+- **Zero Permanent Caching (Streaming-Only Mode)**: The plugin safely cleans up and instantly deletes chunks of the media file from your device the second you stop watching, completely preventing Telegram from eating up your phone's storage.
+- **Custom Catalogue Channels**: Add your favorite Telegram channels (e.g. `@MyMovieChannel` or `-1001234567`) in the plugin settings to have them appear directly on your Cloudstream homepage!
+- **Endless Pagination**: Scroll through your channel catalogues endlessly to browse hundreds of media files smoothly.
+- **Advanced Search Engine**: Search through your saved custom channels to immediately find specific movies or shows.
+- **Native Thumbnails**: Automatically fetches and serves the official Telegram thumbnails/posters for a beautiful UI.
+- **Diagnostic Settings UI**: Easily configure your channels, authenticate, and monitor logs directly from the Cloudstream extensions page.
+- **Auto-Updates**: Built with GitHub Actions to seamlessly deliver OTA updates directly to your Cloudstream app.
 
- 
-## Getting started with writing your first plugin
+## ⚙️ Installation & Setup
 
-This template includes 1 example plugin.
+1. **Install the Plugin Repo**: Add this repository link inside Cloudstream > Settings > Extensions > Add Repository.
+2. **Download the Plugin**: Install the **Telegram** extension.
+3. **Authenticate**: Go to the extension settings (gear icon) and log into your Telegram account using your phone number or QR code.
+4. **Add Channels**: In the settings, enter a comma-separated list of your favorite movie channels (e.g., `@movie_channel, @series_channel`).
+5. **Watch**: Go back to the Cloudstream homepage and start streaming!
 
-1. Open the root build.gradle.kts, read the comments and replace all the placeholders
-2. Familiarize yourself with the project structure. Most files are commented
-3. Build or deploy your first plugin using:
-   - Windows: `.\gradlew.bat ExampleProvider:make` or `.\gradlew.bat ExampleProvider:deployWithAdb`
-   - Linux & Mac: `./gradlew ExampleProvider:make` or `./gradlew ExampleProvider:deployWithAdb`
+## 🛠️ Architecture
 
+This plugin runs a robust local proxy server inside Cloudstream. It uses the official native **TDLib (Telegram Database Library)** to communicate with Telegram's servers. 
+- The proxy intercepts video requests and uses HTTP byte-range chunks to deliver progressive media to Cloudstream's video player.
+- The built-in auto-cleaner constantly monitors socket connections to ensure media is instantly deleted when playback is closed.
 
-## Granting All Files Access on Newer Android Devices
+## 📄 License
 
-For local plugin testing, you need to grant the app "All Files Access" on newer Android devices (Android 11 and above). Here’s how to do it:
-
-### Using ADB
-
-* `adb shell appops set --uid PACKAGE_NAME MANAGE_EXTERNAL_STORAGE allow`
-* Replace `PACKAGE_NAME` with the name of the package for the Cloudstream3 version you are using:
-   - debug: `com.lagradost.cloudstream3.prerelease.debug`
-   - prerelease: `com.lagradost.cloudstream3.prerelease`
-   - stable: `com.lagradost.cloudstream3`
-
-### Manually
-
-1. **Open Settings**: Go to your device’s Settings menu.
-
-2. **Navigate to Special Access**:
-   - Tap on "Apps & notifications" or "Apps".
-   - Select "Special app access" or "Special access".
-
-3. **Select All Files Access**:
-   - Tap on "All files access".
-   - It may be under the three vertical dots menu towards the top of the screen.
-
-4. **Grant Access to the App**: Find the app in the list and tap on it to toggle it, if it is not already enabled.
-
-6. **Restart the App**: Close and reopen the app to apply the changes.
-
-
-## License
-
-Everything in this repo is released into the public domain. You may use it however you want with no conditions whatsoever
-
-
-## Attribution
-
-This template as well as the gradle plugin and the whole plugin system is **heavily** based on [Aliucord](https://github.com/Aliucord).
-*Go use it, it's a great mobile discord client mod!*
-
+This repository is released into the public domain. You may use it however you want.
