@@ -65,20 +65,21 @@ class TeleflixProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val type = if (url.startsWith("tt")) {
+        val id = url.substringAfterLast("/")
+        val type = if (id.startsWith("tt")) {
             // It's an IMDb ID. We need to check if it's a movie or series.
             // Let's just try movie first, if fail try series.
             "movie"
-        } else url
+        } else id
 
-        // url is the id (e.g. tt1234567)
-        val metaUrl = "$mainUrl/meta/movie/$url.json" // Try movie
+        // id is the imdb id (e.g. tt1234567)
+        val metaUrl = "$mainUrl/meta/movie/$id.json" // Try movie
         var metaResponse = app.get(metaUrl).text
         var meta = parseJson<CinemetaMetaResponse>(metaResponse).meta
         
         var isSeries = false
         if (meta == null) {
-            val seriesUrl = "$mainUrl/meta/series/$url.json"
+            val seriesUrl = "$mainUrl/meta/series/$id.json"
             metaResponse = app.get(seriesUrl).text
             meta = parseJson<CinemetaMetaResponse>(metaResponse).meta
             isSeries = true

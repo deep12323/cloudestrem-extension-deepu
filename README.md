@@ -15,7 +15,10 @@ A powerful, native [Cloudstream 3](https://github.com/recloudstream/cloudstream)
 
 ## ⚙️ Installation & Setup
 
-1. **Install the Plugin Repo**: Add this repository link inside Cloudstream > Settings > Extensions > Add Repository.
+1. **Install the Plugin Repo**: Open Cloudstream > Settings > Extensions > Add Repository, and paste this URL:
+   ```text
+   https://raw.githubusercontent.com/deepu2135/TestPlugins/builds/repo.json
+   ```
 2. **Download the Plugin**: Install the **Telegram** extension.
 3. **Authenticate**: Go to the extension settings (gear icon) and log into your Telegram account using your phone number or QR code.
 4. **Add Channels**: In the settings, enter a comma-separated list of your favorite movie channels (e.g., `@movie_channel, @series_channel`).
