@@ -93,7 +93,7 @@ object TelegramClient {
             destFile.setExecutable(true, true)
             destFile.setWritable(false, true)
 
-            System.load(destFile.absolutePath)
+            org.drinkless.tdlib.Client.load(destFile.absolutePath)
             isLibraryLoaded = true
             isAvailable = true
             Log.i(TAG, "Successfully loaded native library via custom extraction!")

@@ -13,12 +13,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * Main class for interaction with the TDLib.
  */
 public final class Client {
+    public static void load(String path) {
+        System.load(path);
+    }
+
     static {
-        try {
-            System.loadLibrary("tdjni");
-        } catch (UnsatisfiedLinkError e) {
-            e.printStackTrace();
-        }
+        // Native library loaded dynamically via load(path)
     }
 
     /**
