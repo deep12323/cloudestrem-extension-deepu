@@ -77,6 +77,7 @@ object TelegramClient {
 
                 if (!destFile.exists() || destFile.length() != targetEntry.size) {
                     Log.d(TAG, "Extracting libtdjni.so from zip...")
+                    destFile.setWritable(true)
                     zip.getInputStream(targetEntry).use { input ->
                         destFile.outputStream().use { output ->
                             input.copyTo(output)
@@ -86,6 +87,11 @@ object TelegramClient {
                     Log.d(TAG, "libtdjni.so already exists and size matches, skipping extraction")
                 }
             }
+
+            // Set strict permissions to comply with Android 10+ dynamic library loading rules
+            destFile.setReadable(true, true)
+            destFile.setExecutable(true, true)
+            destFile.setWritable(false, true)
 
             System.load(destFile.absolutePath)
             isLibraryLoaded = true
