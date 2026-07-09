@@ -216,13 +216,17 @@ object TelegramStreamingProxy {
         limit: Int
     ): ByteArray? {
         withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
-            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                req.fileId = fileId
-                req.priority = DOWNLOAD_PRIORITY
-                req.offset = offset
-                req.limit = PREFETCH_SIZE
-                req.synchronous = false
-            })
+            try {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = fileId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = offset
+                    req.limit = PREFETCH_SIZE
+                    req.synchronous = false
+                })
+            } catch (e: Exception) {
+                Log.e(TAG, "DownloadFile failed at offset $offset: ${e.message}")
+            }
         }
 
         val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
@@ -259,7 +263,11 @@ object TelegramStreamingProxy {
     }
 
     private suspend fun getFileInfo(fileId: Int): Pair<String?, Long>? {
-        val file = TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File ?: return null
+        val file = try {
+            TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File
+        } catch (e: Exception) {
+            null
+        } ?: return null
         val totalSize = file.size.takeIf { it > 0 } ?: file.expectedSize
         val localPath = file.local?.path?.takeIf { it.isNotBlank() }
         return Pair(localPath, totalSize.toLong())
