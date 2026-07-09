@@ -35,7 +35,7 @@ class TeleflixProvider : MainAPI() {
 
         val items = catalog.metas.map { meta ->
             val isMovie = meta.type == "movie"
-            newMovieSearchResponse(meta.name, meta.id, if (isMovie) TvType.Movie else TvType.TvSeries) {
+            newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
             }
         }
@@ -56,7 +56,7 @@ class TeleflixProvider : MainAPI() {
 
         val all = (movies + series).map { meta ->
             val isMovie = meta.type == "movie"
-            newMovieSearchResponse(meta.name, meta.id, if (isMovie) TvType.Movie else TvType.TvSeries) {
+            newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
             }
         }
@@ -66,26 +66,22 @@ class TeleflixProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        val type = if (id.startsWith("tt")) {
-            // It's an IMDb ID. We need to check if it's a movie or series.
-            // Let's just try movie first, if fail try series.
-            "movie"
-        } else id
-
-        // id is the imdb id (e.g. tt1234567)
-        val metaUrl = "$mainUrl/meta/movie/$id.json" // Try movie
-        var metaResponse = app.get(metaUrl).text
-        var meta = parseJson<CinemetaMetaResponse>(metaResponse).meta
+        var type = url.substringBeforeLast("/")
         
-        var isSeries = false
-        if (meta == null) {
-            val seriesUrl = "$mainUrl/meta/series/$id.json"
-            metaResponse = app.get(seriesUrl).text
-            meta = parseJson<CinemetaMetaResponse>(metaResponse).meta
-            isSeries = true
+        if (type == id) {
+            // Backward compatibility for old bookmarks without type prefix
+            val checkUrl = "$mainUrl/meta/series/$id.json"
+            val checkMeta = try { parseJson<CinemetaMetaResponse>(app.get(checkUrl).text).meta } catch (e: Exception) { null }
+            type = if (checkMeta != null && checkMeta.type == "series") "series" else "movie"
         }
+
+        val metaUrl = "$mainUrl/meta/$type/$id.json"
+        val metaResponse = app.get(metaUrl).text
+        val meta = parseJson<CinemetaMetaResponse>(metaResponse).meta
         
         if (meta == null) throw ErrorLoadingException("Failed to load metadata")
+        
+        val isSeries = meta.type == "series"
 
         if (isSeries) {
             val episodes = meta.videos?.map { video ->
