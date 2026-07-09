@@ -164,7 +164,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 val resetBtn = Button(context).apply {
                     text = "Wrong number? Go Back"
                     setOnClickListener {
-                        TelegramRepository.logOut()
+                        TelegramRepository.disconnect(context)
                     }
                 }
                 formContainer.addView(tv, layoutParams)
@@ -197,7 +197,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 val resetBtn = Button(context).apply {
                     text = "Forgot password / Go Back"
                     setOnClickListener {
-                        TelegramRepository.logOut()
+                        TelegramRepository.disconnect(context)
                     }
                 }
                 formContainer.addView(tv, layoutParams)

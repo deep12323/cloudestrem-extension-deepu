@@ -26,7 +26,7 @@ class TeleflixProvider : MainAPI() {
     ): HomePageResponse {
         // Cinemeta pagination is usually skip=0, skip=100 etc. or skip is not fully supported for top.
         // For simplicity, we just fetch the top page.
-        if (page > 1) return HomePageResponse(emptyList(), false)
+        if (page > 1) return newHomePageResponse(request.name, emptyList(), false)
 
         val response = app.get(request.data).text
         val catalog = parseJson<CinemetaCatalog>(response)
@@ -166,7 +166,7 @@ class TeleflixProvider : MainAPI() {
             val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
             
             callback.invoke(
-                ExtractorLink(
+                newExtractorLink(
                     source = "Telegram",
                     name = "${msg.fileName} ($sizeStr)",
                     url = streamUrl,
