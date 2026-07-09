@@ -47,8 +47,8 @@ jobs:
               "language": "en",
               "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg",
               "apiVersion": 10,
-              "version": 8,
-              "authors": ["Antigravity"],
+              "version": 9,
+              "authors": ["deepu2135"],
               "status": 1,
               "description": "Stream any media from your Telegram chats and channels on-demand"
             }
