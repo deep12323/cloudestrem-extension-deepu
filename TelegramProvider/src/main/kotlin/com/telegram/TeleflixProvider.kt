@@ -176,7 +176,6 @@ class TeleflixProvider : MainAPI() {
                 ) {
                     this.referer = ""
                     this.quality = getQualityFromName(msg.fileName)
-                    this.isM3u8 = false
                 }
             )
         }
