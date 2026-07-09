@@ -30,7 +30,7 @@ object TelegramRepository {
         sessionMarker(context).delete()
         File(context.filesDir, "tdlib").deleteRecursively()
         File(context.filesDir, "tdlib_files").deleteRecursively()
-        File(context.filesDir, "libtdjni.so").delete()
+        TelegramClient.clearNativeLibraryCache(context)
         Log.d(TAG, "TDLib database and native library wiped")
     }
 

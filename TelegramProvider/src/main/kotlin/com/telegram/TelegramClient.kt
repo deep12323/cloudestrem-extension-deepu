@@ -14,6 +14,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import java.io.File
+import java.util.zip.CRC32
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -21,6 +24,7 @@ class TelegramApiException(message: String) : Exception(message)
 
 object TelegramClient {
     private const val TAG = "TelegramClient"
+    private const val NATIVE_LIB_NAME = "libtdjni.so"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -64,49 +68,68 @@ object TelegramClient {
                 throw Exception("Plugin file does not exist at $cs3Path")
             }
 
-            val destFile = File(context.filesDir, "libtdjni.so")
-            stepLog(context, "destFile path is ${destFile.absolutePath}, exists=${destFile.exists()}, length=${destFile.length()}")
-
             stepLog(context, "opening plugin zip file")
-            java.util.zip.ZipFile(cs3File).use { zip ->
-                var foundEntry: java.util.zip.ZipEntry? = null
+            val destFile = ZipFile(cs3File).use { zip ->
+                var foundEntry: ZipEntry? = null
+                var foundAbi: String? = null
                 val abis = android.os.Build.SUPPORTED_ABIS.joinToString(", ")
                 stepLog(context, "supported ABIs: $abis")
                 for (abi in android.os.Build.SUPPORTED_ABIS) {
-                    val entryName = "lib/$abi/libtdjni.so"
+                    val entryName = "lib/$abi/$NATIVE_LIB_NAME"
                     val entry = zip.getEntry(entryName)
                     if (entry != null) {
                         foundEntry = entry
+                        foundAbi = abi
                         stepLog(context, "found matching ABI $abi inside zip")
                         break
                     }
                 }
 
                 val targetEntry = foundEntry ?: throw Exception("No compatible ABI found in plugin lib/ directories")
-                stepLog(context, "target entry size is ${targetEntry.size}")
+                val abi = foundAbi ?: throw Exception("Matched native library ABI was not recorded")
+                stepLog(context, "target entry size=${targetEntry.size}, crc=${targetEntry.crc}")
 
-                if (!destFile.exists() || destFile.length() != targetEntry.size) {
-                    stepLog(context, "extracting libtdjni.so to filesDir...")
-                    destFile.setWritable(true)
+                val nativeDir = nativeLibraryDir(context)
+                if (!nativeDir.exists() && !nativeDir.mkdirs()) {
+                    throw Exception("Failed to create native library directory: ${nativeDir.absolutePath}")
+                }
+
+                val versionSuffix = if (targetEntry.crc >= 0) targetEntry.crc.toString(16) else targetEntry.size.toString()
+                val targetFile = File(nativeDir, "libtdjni-$abi-$versionSuffix.so")
+                stepLog(
+                    context,
+                    "destFile path is ${targetFile.absolutePath}, exists=${targetFile.exists()}, length=${targetFile.length()}"
+                )
+
+                if (!targetFile.exists() || targetFile.length() != targetEntry.size || !crcMatches(targetFile, targetEntry.crc)) {
+                    stepLog(context, "extracting $NATIVE_LIB_NAME to codeCacheDir...")
+                    targetFile.delete()
+                    targetFile.setWritable(true)
                     zip.getInputStream(targetEntry).use { input ->
-                        destFile.outputStream().use { output ->
+                        targetFile.outputStream().use { output ->
                             input.copyTo(output)
                         }
                     }
                     stepLog(context, "extraction completed successfully")
                 } else {
-                    stepLog(context, "libtdjni.so size matches target entry size, skipping extraction")
+                    stepLog(context, "$NATIVE_LIB_NAME size and crc match target entry, skipping extraction")
                 }
+
+                targetFile
             }
 
             stepLog(context, "setting readable/executable permissions on destFile")
-            destFile.setReadable(true, true)
-            destFile.setExecutable(true, true)
-            destFile.setWritable(false, true)
-            stepLog(context, "permissions set successfully")
+            prepareNativeLibraryPermissions(destFile)
+            stepLog(
+                context,
+                "permissions set: canRead=${destFile.canRead()}, canExecute=${destFile.canExecute()}, canWrite=${destFile.canWrite()}"
+            )
+            if (!destFile.canRead() || !destFile.canExecute() || destFile.canWrite()) {
+                throw Exception("Native library permissions are invalid after chmod")
+            }
 
-            stepLog(context, "calling System.load(${destFile.absolutePath})")
-            System.load(destFile.absolutePath)
+            stepLog(context, "calling Client.load(${destFile.absolutePath})")
+            Client.load(destFile.absolutePath)
             isLibraryLoaded = true
             isAvailable = true
             stepLog(context, "System.load succeeded!")
@@ -116,9 +139,40 @@ object TelegramClient {
             stepLog(context, "ERROR: $err")
             Log.e(TAG, err, e)
             libraryLoadError = err
-            try { File(context.filesDir, "libtdjni.so").delete() } catch (_: Throwable) {}
+            clearNativeLibraryCache(context)
             return false
         }
+    }
+
+    private fun nativeLibraryDir(context: Context): File =
+        File(context.codeCacheDir, "telegram_tdlib_native")
+
+    private fun crcMatches(file: File, expectedCrc: Long): Boolean {
+        if (expectedCrc < 0) return true
+        if (!file.exists()) return false
+
+        val crc = CRC32()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        file.inputStream().use { input ->
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                crc.update(buffer, 0, read)
+            }
+        }
+        return crc.value == expectedCrc
+    }
+
+    private fun prepareNativeLibraryPermissions(file: File) {
+        file.setReadable(true, true)
+        file.setExecutable(true, true)
+        file.setWritable(false, false)
+        file.setReadOnly()
+    }
+
+    fun clearNativeLibraryCache(context: Context) {
+        try { File(context.filesDir, NATIVE_LIB_NAME).delete() } catch (_: Throwable) {}
+        try { nativeLibraryDir(context).deleteRecursively() } catch (_: Throwable) {}
     }
 
     fun initialize(context: Context) {
