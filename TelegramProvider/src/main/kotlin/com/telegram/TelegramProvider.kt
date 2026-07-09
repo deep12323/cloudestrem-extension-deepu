@@ -38,22 +38,18 @@ class TelegramProvider : MainAPI() {
             val title = result.first
             val videos = result.second
 
-            // Fetch posters in parallel
-            val searchResponses = coroutineScope {
-                videos.map { msg ->
-                    async {
-                        val fileId = msg.fileId
-                        val size = msg.fileSize
-                        val name = msg.fileName
-                        val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}"
-                        
-                        val poster = fetchPoster(name) ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-                        
-                        newMovieSearchResponse(name, url, TvType.Movie) {
-                            this.posterUrl = poster
-                        }
-                    }
-                }.awaitAll()
+            val searchResponses = videos.mapNotNull { msg ->
+                val fileId = msg.fileId
+                val size = msg.fileSize
+                val name = msg.fileName
+                val thumbId = msg.thumbnailFileId?.toString() ?: ""
+                val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}&thumbnailFileId=$thumbId"
+                
+                val poster = msg.thumbnailFileId?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                
+                newMovieSearchResponse(name, url, TvType.Movie) {
+                    this.posterUrl = poster
+                }
             }
 
             if (searchResponses.isNotEmpty()) {
@@ -70,22 +66,18 @@ class TelegramProvider : MainAPI() {
         }
         val messages = TelegramRepository.searchVideoMessages(query)
         
-        // Fetch posters in parallel
-        return coroutineScope {
-            messages.map { msg ->
-                async {
-                    val fileId = msg.fileId
-                    val size = msg.fileSize
-                    val name = msg.fileName
-                    val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}"
-                    
-                    val poster = fetchPoster(name) ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-                    
-                    newMovieSearchResponse(name, url, TvType.Movie) {
-                        this.posterUrl = poster
-                    }
+        return messages.mapNotNull { msg ->
+                val fileId = msg.fileId
+                val size = msg.fileSize
+                val name = msg.fileName
+                val thumbId = msg.thumbnailFileId?.toString() ?: ""
+                val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}&thumbnailFileId=$thumbId"
+                
+                val poster = msg.thumbnailFileId?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                
+                newMovieSearchResponse(name, url, TvType.Movie) {
+                    this.posterUrl = poster
                 }
-            }.awaitAll()
         }
     }
 
@@ -94,8 +86,9 @@ class TelegramProvider : MainAPI() {
         val fileId = uri.getQueryParameter("fileId")?.toIntOrNull() ?: throw Exception("Invalid fileId")
         val size = uri.getQueryParameter("size")?.toLongOrNull() ?: 0L
         val name = uri.getQueryParameter("name") ?: "Telegram File"
+        val thumbnailFileId = uri.getQueryParameter("thumbnailFileId")?.toIntOrNull()
 
-        val poster = fetchPoster(name) ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+        val poster = thumbnailFileId?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
 
         return newMovieLoadResponse(name, url, TvType.Movie, url) {
             this.plot = "Telegram Video File\nSize: ${formatBytes(size)}"
@@ -127,51 +120,6 @@ class TelegramProvider : MainAPI() {
         }
         callback(link)
         return true
-    }
-
-    private suspend fun fetchPoster(title: String): String? {
-        return try {
-            val cleanTitle = cleanFileNameForSearch(title)
-            if (cleanTitle.isBlank()) return null
-            
-            val url = "https://api.themoviedb.org/3/search/multi?api_key=b66d54848312e022f4625b5d1239ab7b&query=${URLEncoder.encode(cleanTitle, "UTF-8")}"
-            val response = app.get(url).text
-            
-            val json = com.lagradost.cloudstream3.utils.AppUtils.tryParseJson<Map<String, Any>>(response)
-            val results = json?.get("results") as? List<Map<String, Any>>
-            val firstResult = results?.firstOrNull { 
-                it.containsKey("poster_path") && it["poster_path"] != null 
-            }
-            val posterPath = firstResult?.get("poster_path") as? String
-            if (posterPath != null) {
-                "https://image.tmdb.org/t/p/w500$posterPath"
-            } else null
-        } catch (e: Exception) {
-            Log.e("TelegramProvider", "Failed to fetch poster for $title: ${e.message}")
-            null
-        }
-    }
-
-    private fun cleanFileNameForSearch(fileName: String): String {
-        var name = fileName.substringBeforeLast(".")
-        name = name.replace(Regex("[._-]"), " ")
-        
-        val patterns = listOf(
-            Regex("(?i)s\\d+e\\d+"),
-            Regex("(?i)season\\s*\\d+"),
-            Regex("(?i)episode\\s*\\d+"),
-            Regex("\\b(19|20)\\d{2}\\b"),
-            Regex("(?i)\\b(1080p|720p|480p|360p|4k|uhd|bluray|hdtv|webrip|web-dl|x264|x265|hevc|dd5\\.1|dual-audio|multi)\\b")
-        )
-        
-        for (pattern in patterns) {
-            val match = pattern.find(name)
-            if (match != null) {
-                name = name.substring(0, match.range.first)
-            }
-        }
-        
-        return name.replace(Regex("\\s+"), " ").trim()
     }
 
     private fun parseQuality(raw: String): Int {

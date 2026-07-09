@@ -14,7 +14,8 @@ data class TelegramVideoMessage(
     val fileSize: Long,
     val duration: Int,
     val mimeType: String,
-    val caption: String
+    val caption: String,
+    val thumbnailFileId: Int? = null
 )
 
 object TelegramRepository {
@@ -124,7 +125,8 @@ object TelegramRepository {
                             fileSize = content.document.document.size,
                             duration = 0,
                             mimeType = mime,
-                            caption = content.caption?.text ?: ""
+                            caption = content.caption?.text ?: "",
+                            thumbnailFileId = content.document.thumbnail?.file?.id
                         ))
                     }
                 }
@@ -140,7 +142,8 @@ object TelegramRepository {
                             fileSize = content.video.video.size,
                             duration = content.video.duration,
                             mimeType = content.video.mimeType ?: "video/mp4",
-                            caption = content.caption?.text ?: ""
+                            caption = content.caption?.text ?: "",
+                            thumbnailFileId = content.video.thumbnail?.file?.id
                         ))
                     }
                 }
@@ -227,4 +230,6 @@ object TelegramRepository {
     }
 
     fun getStreamUrl(fileId: Int): String = TelegramStreamingProxy.getUrl(fileId)
+
+    fun getThumbnailUrl(fileId: Int): String = TelegramStreamingProxy.getThumbnailUrl(fileId)
 }

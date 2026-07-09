@@ -68,9 +68,16 @@ object TelegramStreamingProxy {
             val reqLine = reader.readLine() ?: return
             val parts = reqLine.split(" ")
             if (parts.size < 2) return
-            val path = parts[1] // /file/{fileId}
+            val path = parts[1] // /file/{fileId} or /thumbnail/{fileId}
+            var fileId: Int? = null
+            var isThumbnail = false
+            if (path.startsWith("/file/")) {
+                fileId = path.substringAfter("/file/").substringBefore("?").toIntOrNull()
+            } else if (path.startsWith("/thumbnail/")) {
+                fileId = path.substringAfter("/thumbnail/").substringBefore("?").toIntOrNull()
+                isThumbnail = true
+            }
 
-            val fileId = path.substringAfter("/file/").substringBefore("?").toIntOrNull()
             val output = socket.getOutputStream()
             if (fileId == null) {
                 output.write("HTTP/1.1 400 Bad Request\r\n\r\n".toByteArray())
@@ -87,8 +94,12 @@ object TelegramStreamingProxy {
                 }
             }
 
-            // Stream file range
-            streamFile(fileId, rangeHeader, output)
+            // Stream file or serve thumbnail
+            if (isThumbnail) {
+                serveThumbnail(fileId, output)
+            } else {
+                streamFile(fileId, rangeHeader, output)
+            }
         } catch (e: IOException) {
             Log.d(TAG, "Client disconnected: ${e.message}")
         } catch (e: Exception) {
@@ -167,6 +178,31 @@ object TelegramStreamingProxy {
         return "http://localhost:$port/file/$fileId"
     }
 
+    fun getThumbnailUrl(fileId: Int): String {
+        return "http://localhost:$port/thumbnail/$fileId"
+    }
+
+    private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream) {
+        val fileInfo = getFileInfo(fileId) ?: run {
+            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
+            return
+        }
+        val totalSize = fileInfo.second.toInt()
+        if (totalSize <= 0) {
+            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
+            return
+        }
+
+        val headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: $totalSize\r\nConnection: close\r\n\r\n"
+        output.write(headers.toByteArray())
+
+        val bytes = downloadChunk(fileId, fileInfo.first, 0L, totalSize)
+        if (bytes != null && bytes.isNotEmpty()) {
+            output.write(bytes)
+            output.flush()
+        }
+    }
+
     private suspend fun downloadChunk(
         fileId: Int,
         @Suppress("UNUSED_PARAMETER") localPath: String?,
@@ -183,25 +219,31 @@ object TelegramStreamingProxy {
             })
         }
 
-        val ready = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
+        val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             var attempts = 0
             while (attempts < 300 && running) {
-                val file = TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File
-                val local = file?.local
-                if (local != null && (local.isDownloadingCompleted || local.downloadedPrefixSize >= limit)) {
-                    return@withTimeoutOrNull true
+                val data = TelegramClient.sendRequest(
+                    TdApi.ReadFilePart(fileId, offset, limit.toLong())
+                ) as? TdApi.Data
+                
+                if (data != null && data.data.isNotEmpty()) {
+                    return@withTimeoutOrNull data.data
                 }
+                
+                val file = TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File
+                if (file?.local?.isDownloadingCompleted == true) {
+                    val finalData = TelegramClient.sendRequest(
+                        TdApi.ReadFilePart(fileId, offset, limit.toLong())
+                    ) as? TdApi.Data
+                    return@withTimeoutOrNull finalData?.data
+                }
+                
                 delay(POLL_INTERVAL_MS)
                 attempts++
             }
-            false
+            null
         }
-        if (ready != true) return null
-
-        val data = TelegramClient.sendRequest(
-            TdApi.ReadFilePart(fileId, offset, limit.toLong())
-        ) as? TdApi.Data
-        return data?.data?.takeIf { it.isNotEmpty() }
+        return dataBytes
     }
 
     private suspend fun getFileInfo(fileId: Int): Pair<String?, Long>? {
