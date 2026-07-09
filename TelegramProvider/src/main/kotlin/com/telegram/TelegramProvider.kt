@@ -51,7 +51,7 @@ class TelegramProvider : MainAPI() {
                 val thumbId = msg.thumbnailFileId?.toString() ?: ""
                 val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}&thumbnailFileId=$thumbId"
                 
-                val poster = msg.thumbnailFileId?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 
                 newMovieSearchResponse(name, url, TvType.Movie) {
                     this.posterUrl = poster
@@ -79,7 +79,7 @@ class TelegramProvider : MainAPI() {
                 val thumbId = msg.thumbnailFileId?.toString() ?: ""
                 val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}&thumbnailFileId=$thumbId"
                 
-                val poster = msg.thumbnailFileId?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 
                 newMovieSearchResponse(name, url, TvType.Movie) {
                     this.posterUrl = poster
@@ -94,7 +94,7 @@ class TelegramProvider : MainAPI() {
         val name = uri.getQueryParameter("name") ?: "Telegram File"
         val thumbnailFileId = uri.getQueryParameter("thumbnailFileId")?.toIntOrNull()
 
-        val poster = thumbnailFileId?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+        val poster = thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
 
         return newMovieLoadResponse(name, url, TvType.Movie, url) {
             this.plot = "Telegram Video File\nSize: ${formatBytes(size)}"

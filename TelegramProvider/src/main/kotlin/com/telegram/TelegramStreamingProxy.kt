@@ -192,11 +192,11 @@ object TelegramStreamingProxy {
     }
 
     fun getUrl(fileId: Int): String {
-        return "http://localhost:$port/file/$fileId"
+        return "http://127.0.0.1:$port/file/$fileId"
     }
 
     fun getThumbnailUrl(fileId: Int): String {
-        return "http://localhost:$port/thumbnail/$fileId"
+        return "http://127.0.0.1:$port/thumbnail/$fileId"
     }
 
     private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream) {
