@@ -36,70 +36,84 @@ object TelegramClient {
         private set
 
     private fun loadNativeLibrary(context: Context): Boolean {
-        if (isLibraryLoaded) return true
         if (libraryLoadError != null) return false
+        if (isLibraryLoaded) return true
 
+        stepLog(context, "trying System.loadLibrary(tdjni)")
         try {
             System.loadLibrary("tdjni")
             isLibraryLoaded = true
             isAvailable = true
+            stepLog(context, "System.loadLibrary(tdjni) succeeded")
             return true
         } catch (e: Throwable) {
-            Log.d(TAG, "System.loadLibrary failed, attempting custom extraction: ${e.message}")
+            stepLog(context, "System.loadLibrary failed: ${e.message}")
         }
 
         try {
+            stepLog(context, "locating manifest.json")
             val manifestUrl = TelegramClient::class.java.classLoader?.getResource("manifest.json")?.toString()
+            stepLog(context, "manifestUrl is $manifestUrl")
             if (manifestUrl == null || !manifestUrl.startsWith("jar:file:")) {
                 throw Exception("Could not locate plugin file path (url: $manifestUrl)")
             }
             val cs3Path = manifestUrl.substringAfter("file:").substringBefore("!")
             val cs3File = File(cs3Path)
+            stepLog(context, "cs3 file path is ${cs3File.absolutePath}, exists=${cs3File.exists()}")
             if (!cs3File.exists()) {
                 throw Exception("Plugin file does not exist at $cs3Path")
             }
 
             val destFile = File(context.filesDir, "libtdjni.so")
+            stepLog(context, "destFile path is ${destFile.absolutePath}, exists=${destFile.exists()}, length=${destFile.length()}")
 
+            stepLog(context, "opening plugin zip file")
             java.util.zip.ZipFile(cs3File).use { zip ->
                 var foundEntry: java.util.zip.ZipEntry? = null
+                val abis = android.os.Build.SUPPORTED_ABIS.joinToString(", ")
+                stepLog(context, "supported ABIs: $abis")
                 for (abi in android.os.Build.SUPPORTED_ABIS) {
                     val entryName = "lib/$abi/libtdjni.so"
                     val entry = zip.getEntry(entryName)
                     if (entry != null) {
                         foundEntry = entry
-                        Log.d(TAG, "Found matching ABI $abi inside plugin zip")
+                        stepLog(context, "found matching ABI $abi inside zip")
                         break
                     }
                 }
 
                 val targetEntry = foundEntry ?: throw Exception("No compatible ABI found in plugin lib/ directories")
+                stepLog(context, "target entry size is ${targetEntry.size}")
 
                 if (!destFile.exists() || destFile.length() != targetEntry.size) {
-                    Log.d(TAG, "Extracting libtdjni.so from zip...")
+                    stepLog(context, "extracting libtdjni.so to filesDir...")
                     destFile.setWritable(true)
                     zip.getInputStream(targetEntry).use { input ->
                         destFile.outputStream().use { output ->
                             input.copyTo(output)
                         }
                     }
+                    stepLog(context, "extraction completed successfully")
                 } else {
-                    Log.d(TAG, "libtdjni.so already exists and size matches, skipping extraction")
+                    stepLog(context, "libtdjni.so size matches target entry size, skipping extraction")
                 }
             }
 
-            // Set strict permissions to comply with Android 10+ dynamic library loading rules
+            stepLog(context, "setting readable/executable permissions on destFile")
             destFile.setReadable(true, true)
             destFile.setExecutable(true, true)
             destFile.setWritable(false, true)
+            stepLog(context, "permissions set successfully")
 
-            org.drinkless.tdlib.Client.load(destFile.absolutePath)
+            stepLog(context, "calling System.load(${destFile.absolutePath})")
+            System.load(destFile.absolutePath)
             isLibraryLoaded = true
             isAvailable = true
-            Log.i(TAG, "Successfully loaded native library via custom extraction!")
+            stepLog(context, "System.load succeeded!")
             return true
         } catch (e: Throwable) {
-            val err = "Failed to extract and load native library: ${e.message}"
+            val err = "Failed to extract and load: ${e.message}"
+            stepLog(context, "ERROR: $err")
             Log.e(TAG, err, e)
             libraryLoadError = err
             try { File(context.filesDir, "libtdjni.so").delete() } catch (_: Throwable) {}
