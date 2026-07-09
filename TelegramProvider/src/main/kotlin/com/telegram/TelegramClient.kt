@@ -29,23 +29,80 @@ object TelegramClient {
 
     private var client: Client? = null
 
-    val isAvailable: Boolean by lazy {
+    private var isLibraryLoaded = false
+    private var libraryLoadError: String? = null
+
+    var isAvailable: Boolean = false
+        private set
+
+    private fun loadNativeLibrary(context: Context): Boolean {
+        if (isLibraryLoaded) return true
+        if (libraryLoadError != null) return false
+
         try {
             System.loadLibrary("tdjni")
-            true
+            isLibraryLoaded = true
+            isAvailable = true
+            return true
         } catch (e: Throwable) {
-            Log.w(TAG, "TDLib not available — Telegram integration disabled: ${e.message}")
-            false
+            Log.d(TAG, "System.loadLibrary failed, attempting custom extraction: ${e.message}")
+        }
+
+        try {
+            val manifestUrl = TelegramClient::class.java.classLoader.getResource("manifest.json")?.toString()
+            if (manifestUrl == null || !manifestUrl.startsWith("jar:file:")) {
+                throw Exception("Could not locate plugin file path (url: $manifestUrl)")
+            }
+            val cs3Path = manifestUrl.substringAfter("file:").substringBefore("!")
+            val cs3File = File(cs3Path)
+            if (!cs3File.exists()) {
+                throw Exception("Plugin file does not exist at $cs3Path")
+            }
+
+            val destFile = File(context.filesDir, "libtdjni.so")
+
+            java.util.zip.ZipFile(cs3File).use { zip ->
+                var foundEntry: java.util.zip.ZipEntry? = null
+                for (abi in android.os.Build.SUPPORTED_ABIS) {
+                    val entryName = "lib/$abi/libtdjni.so"
+                    val entry = zip.getEntry(entryName)
+                    if (entry != null) {
+                        foundEntry = entry
+                        Log.d(TAG, "Found matching ABI $abi inside plugin zip")
+                        break
+                    }
+                }
+
+                val targetEntry = foundEntry ?: throw Exception("No compatible ABI found in plugin lib/ directories")
+
+                zip.getInputStream(targetEntry).use { input ->
+                    destFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+
+            System.load(destFile.absolutePath)
+            isLibraryLoaded = true
+            isAvailable = true
+            Log.i(TAG, "Successfully loaded native library via custom extraction!")
+            return true
+        } catch (e: Throwable) {
+            val err = "Failed to extract and load native library: ${e.message}"
+            Log.e(TAG, err, e)
+            libraryLoadError = err
+            return false
         }
     }
 
     fun initialize(context: Context) {
         if (client != null) return
+        loadNativeLibrary(context)
         scope.launch {
             if (client != null) return@launch
             stepLog(context, "checking library availability")
             if (!isAvailable) {
-                _authState.value = TelegramAuthState.Error("TDLib native library not available")
+                _authState.value = TelegramAuthState.Error(libraryLoadError ?: "TDLib native library not available")
                 return@launch
             }
             stepLog(context, "library loaded OK")

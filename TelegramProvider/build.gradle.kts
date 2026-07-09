@@ -1,3 +1,8 @@
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+
 dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
@@ -18,7 +23,7 @@ cloudstream {
     * 1: Ok
     * 2: Slow
     * 3: Beta-only
-    **/
+    * **/
     status = 1 // Will be 3 if unspecified
 
     tvTypes = listOf("Movie")
@@ -34,5 +39,44 @@ android {
     buildFeatures {
         buildConfig = true
         viewBinding = true
+    }
+}
+
+tasks.findByName("make")?.apply {
+    doLast {
+        val cs3File = file("build/TelegramProvider.cs3")
+        if (cs3File.exists()) {
+            println("Appending JNI libraries to ${cs3File.absolutePath}...")
+
+            val tempFile = File(cs3File.parent, cs3File.name + ".tmp")
+            val zipOutputStream = ZipOutputStream(tempFile.outputStream())
+            val zipInputStream = ZipInputStream(cs3File.inputStream())
+
+            var entry = zipInputStream.nextEntry
+            while (entry != null) {
+                zipOutputStream.putNextEntry(ZipEntry(entry.name))
+                zipInputStream.copyTo(zipOutputStream)
+                zipOutputStream.closeEntry()
+                entry = zipInputStream.nextEntry
+            }
+            zipInputStream.close()
+
+            val jniLibsDir = file("src/main/jniLibs")
+            if (jniLibsDir.exists()) {
+                jniLibsDir.walkTopDown().filter { it.isFile }.forEach { file ->
+                    val relativePath = file.relativeTo(jniLibsDir).path.replace('\\', '/')
+                    val zipEntryName = "lib/$relativePath"
+                    println("Adding to zip: $zipEntryName")
+                    zipOutputStream.putNextEntry(ZipEntry(zipEntryName))
+                    file.inputStream().use { it.copyTo(zipOutputStream) }
+                    zipOutputStream.closeEntry()
+                }
+            }
+
+            zipOutputStream.close()
+            cs3File.delete()
+            tempFile.renameTo(cs3File)
+            println("JNI libraries successfully appended to cs3 file!")
+        }
     }
 }
