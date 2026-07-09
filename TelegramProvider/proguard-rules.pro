@@ -1,0 +1,2 @@
+-keep class org.drinkless.tdlib.** { *; }
+-keep interface org.drinkless.tdlib.** { *; }

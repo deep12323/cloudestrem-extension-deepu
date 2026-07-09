@@ -75,7 +75,7 @@ object TelegramClient {
 
                 val targetEntry = foundEntry ?: throw Exception("No compatible ABI found in plugin lib/ directories")
 
-                if (!destFile.exists() || destFile.length() != targetEntry.size) {
+                if (!destFile.exists() || destFile.length() < 10_000_000) {
                     Log.d(TAG, "Extracting libtdjni.so from zip...")
                     destFile.setWritable(true)
                     zip.getInputStream(targetEntry).use { input ->
@@ -109,11 +109,17 @@ object TelegramClient {
     fun initialize(context: Context) {
         if (client != null) return
         _authState.value = TelegramAuthState.Initializing
+        clearInitLog(context)
+        stepLog(context, "loading native library")
+        val isLoaded = loadNativeLibrary(context)
+        stepLog(context, "library loaded result: $isLoaded")
+        if (!isLoaded) {
+            _authState.value = TelegramAuthState.Error(libraryLoadError ?: "TDLib native library not available")
+            return
+        }
+
         scope.launch {
             if (client != null) return@launch
-            clearInitLog(context)
-            stepLog(context, "loading native library")
-            loadNativeLibrary(context)
             stepLog(context, "checking library availability")
             if (!isAvailable) {
                 _authState.value = TelegramAuthState.Error(libraryLoadError ?: "TDLib native library not available")
