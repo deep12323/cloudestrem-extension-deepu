@@ -94,18 +94,27 @@ object TelegramRepository {
     suspend fun getChannelVideos(identifier: String, limit: Int = 30): Pair<String, List<TelegramVideoMessage>>? {
         val chatId = getChatId(identifier) ?: return null
 
-        val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
-        val title = chat?.title ?: identifier
+        val title: String
+        val messages: TdApi.Messages
+        
+        try {
+            val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
+            title = chat?.title ?: identifier
 
-        val historyResult = TelegramClient.sendRequest(TdApi.GetChatHistory().also { req ->
-            req.chatId = chatId
-            req.fromMessageId = 0
-            req.offset = 0
-            req.limit = limit
-            req.onlyLocal = false
-        })
-
-        val messages = (historyResult as? TdApi.Messages) ?: return title to emptyList()
+            val historyResult = TelegramClient.sendRequest(TdApi.GetChatHistory().also { req ->
+                req.chatId = chatId
+                req.fromMessageId = 0
+                req.offset = 0
+                req.limit = limit
+                req.onlyLocal = false
+            })
+            
+            messages = (historyResult as? TdApi.Messages) ?: return title to emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load channel $identifier: ${e.message}")
+            return null
+        }
+        
         val results = mutableListOf<TelegramVideoMessage>()
         val seen = mutableSetOf<Pair<String, Long>>()
 
