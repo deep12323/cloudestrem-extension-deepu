@@ -196,10 +196,16 @@ object TelegramStreamingProxy {
         val headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: $totalSize\r\nConnection: close\r\n\r\n"
         output.write(headers.toByteArray())
 
-        val bytes = downloadChunk(fileId, fileInfo.first, 0L, totalSize)
-        if (bytes != null && bytes.isNotEmpty()) {
-            output.write(bytes)
+        var currentOffset = 0L
+        while (currentOffset < totalSize && running) {
+            val remaining = (totalSize - currentOffset).toInt()
+            val chunk = downloadChunk(fileId, fileInfo.first, currentOffset, remaining)
+            if (chunk == null || chunk.isEmpty()) {
+                break
+            }
+            output.write(chunk)
             output.flush()
+            currentOffset += chunk.size
         }
     }
 
@@ -222,19 +228,25 @@ object TelegramStreamingProxy {
         val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             var attempts = 0
             while (attempts < 300 && running) {
-                val data = TelegramClient.sendRequest(
-                    TdApi.ReadFilePart(fileId, offset, limit.toLong())
-                ) as? TdApi.Data
+                val data = try {
+                    TelegramClient.sendRequest(
+                        TdApi.ReadFilePart(fileId, offset, limit.toLong())
+                    ) as? TdApi.Data
+                } catch (e: Exception) {
+                    null
+                }
                 
                 if (data != null && data.data.isNotEmpty()) {
                     return@withTimeoutOrNull data.data
                 }
                 
-                val file = TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File
+                val file = try { TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File } catch (e: Exception) { null }
                 if (file?.local?.isDownloadingCompleted == true) {
-                    val finalData = TelegramClient.sendRequest(
-                        TdApi.ReadFilePart(fileId, offset, limit.toLong())
-                    ) as? TdApi.Data
+                    val finalData = try {
+                        TelegramClient.sendRequest(
+                            TdApi.ReadFilePart(fileId, offset, limit.toLong())
+                        ) as? TdApi.Data
+                    } catch (e: Exception) { null }
                     return@withTimeoutOrNull finalData?.data
                 }
                 

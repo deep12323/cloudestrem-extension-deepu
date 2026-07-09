@@ -95,21 +95,10 @@ object TelegramRepository {
         val chatId = getChatId(identifier) ?: return null
 
         val title: String
-        val messages: TdApi.Messages
         
         try {
             val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
             title = chat?.title ?: identifier
-
-            val historyResult = TelegramClient.sendRequest(TdApi.GetChatHistory().also { req ->
-                req.chatId = chatId
-                req.fromMessageId = 0
-                req.offset = 0
-                req.limit = limit
-                req.onlyLocal = false
-            })
-            
-            messages = (historyResult as? TdApi.Messages) ?: return title to emptyList()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load channel $identifier: ${e.message}")
             return null
@@ -118,7 +107,26 @@ object TelegramRepository {
         val results = mutableListOf<TelegramVideoMessage>()
         val seen = mutableSetOf<Pair<String, Long>>()
 
-        for (msg in messages.messages) {
+        val filters = listOf(
+            TdApi.SearchMessagesFilterDocument(),
+            TdApi.SearchMessagesFilterVideo()
+        )
+
+        for (filter in filters) {
+            try {
+                val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                    req.chatId = chatId
+                    req.query = ""
+                    req.senderId = null
+                    req.fromMessageId = 0
+                    req.offset = 0
+                    req.limit = limit
+                    req.filter = filter
+                    req.topicId = null
+                })
+                
+                val found = (historyResult as? TdApi.FoundChatMessages) ?: continue
+                for (msg in found.messages) {
             when (val content = msg.content) {
                 is TdApi.MessageDocument -> {
                     val mime = content.document.mimeType ?: ""
@@ -156,6 +164,9 @@ object TelegramRepository {
                         ))
                     }
                 }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Search messages failed for channel $identifier: ${e.message}")
             }
         }
         return title to results
