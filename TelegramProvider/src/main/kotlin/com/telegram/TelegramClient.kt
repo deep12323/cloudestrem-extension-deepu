@@ -306,6 +306,7 @@ object TelegramClient {
             client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(1024L * 1024L * 1L)), null) // 1 MB limit (TDLib requires downloading to disk to stream, but this forces immediate deletion)
             client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(3600L)), null)
         })
+    }
 
     private fun handleUpdate(context: Context, obj: TdApi.Object) {
         when (obj) {
