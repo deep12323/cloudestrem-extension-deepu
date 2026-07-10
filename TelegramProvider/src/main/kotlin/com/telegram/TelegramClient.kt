@@ -318,6 +318,37 @@ object TelegramClient {
         client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(3600L)), null)
     }
 
+    fun optimizeStorage() {
+        client?.send(TdApi.OptimizeStorage().also { req ->
+            req.size = 0
+            req.ttl = 0
+            req.count = 0
+            req.immunityDelay = 0
+            req.fileTypes = arrayOf(
+                TdApi.FileTypeAnimation(),
+                TdApi.FileTypeAudio(),
+                TdApi.FileTypeDocument(),
+                TdApi.FileTypeNone(),
+                TdApi.FileTypePhoto(),
+                TdApi.FileTypeProfilePhoto(),
+                TdApi.FileTypeSecret(),
+                TdApi.FileTypeSecretThumbnail(),
+                TdApi.FileTypeSecure(),
+                TdApi.FileTypeSticker(),
+                TdApi.FileTypeThumbnail(),
+                TdApi.FileTypeUnknown(),
+                TdApi.FileTypeVideo(),
+                TdApi.FileTypeVideoNote(),
+                TdApi.FileTypeVoiceNote(),
+                TdApi.FileTypeWallpaper()
+            )
+            req.chatIds = longArrayOf()
+            req.excludeChatIds = longArrayOf()
+            req.returnDeletedFileStatistics = false
+            req.chatLimit = 0
+        }, null)
+    }
+
     private fun handleUpdate(context: Context, obj: TdApi.Object) {
         when (obj) {
             is TdApi.UpdateAuthorizationState -> handleAuthState(context, obj.authorizationState)
