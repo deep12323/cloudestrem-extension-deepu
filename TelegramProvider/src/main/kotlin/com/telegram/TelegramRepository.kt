@@ -184,6 +184,14 @@ object TelegramRepository {
             TdApi.SearchMessagesFilterVideo()
         )
 
+        if (cachedCustomChannels.isEmpty()) {
+            try {
+                cachedCustomChannels = getCustomChannels(getContext())
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load custom channels: ${e.message}")
+            }
+        }
+
         // 1. Search specifically in custom channels (works even if not joined, if public)
         for (chan in cachedCustomChannels) {
             val chatId = getChatId(chan) ?: continue

@@ -90,7 +90,7 @@ class TeleflixProvider : MainAPI() {
                 // We pass a custom data string to loadLinks containing the show name and episode
                 val data = "${meta.name} S${season.toString().padStart(2, '0')}E${ep.toString().padStart(2, '0')}"
                 newEpisode(data) {
-                    this.name = video.name ?: "Episode $ep"
+                    this.name = video.title ?: "Episode $ep"
                     this.season = season
                     this.episode = ep
                     this.posterUrl = video.thumbnail ?: meta.poster
@@ -208,7 +208,7 @@ class TeleflixProvider : MainAPI() {
 
     private data class CinemetaVideo(
         val id: String,
-        val name: String?,
+        val title: String?,
         val season: Int?,
         val episode: Int?,
         val thumbnail: String?
