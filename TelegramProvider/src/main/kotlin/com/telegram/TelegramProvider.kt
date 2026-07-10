@@ -23,10 +23,12 @@ class TelegramProvider : MainAPI() {
             val context = try { TelegramRepository.getContext() } catch (e: Exception) { return emptyList() }
             val channels = TelegramRepository.getCustomChannels(context)
             val prefs = context.getSharedPreferences("telegram_plugin_prefs", android.content.Context.MODE_PRIVATE)
-            return channels.map { 
-                val cachedTitle = prefs.getString("title_$it", "Channel $it") ?: "Channel $it"
-                MainPageData(it.toString(), cachedTitle)
-            }
+            return mainPageOf(
+                *channels.map { 
+                    val cachedTitle = prefs.getString("title_$it", "Channel $it") ?: "Channel $it"
+                    it.toString() to cachedTitle 
+                }.toTypedArray()
+            )
         }
 
     override suspend fun getMainPage(
