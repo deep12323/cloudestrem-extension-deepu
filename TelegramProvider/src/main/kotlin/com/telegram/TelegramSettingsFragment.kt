@@ -221,6 +221,8 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 val currentChannels = TelegramRepository.getCustomChannels(context).joinToString(", ")
 
                 val channelsInput = EditText(context).apply {
+                    inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                    minLines = 2
                     hint = "@my_channel, -1001234567"
                     setText(currentChannels)
                     setTextColor(Color.WHITE)
@@ -231,7 +233,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                     text = "Save Catalogue Channels"
                     setOnClickListener {
                         val input = channelsInput.text.toString()
-                        val list = input.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                        val list = input.split(",", " ", "\n", "\r", ";").map { it.trim() }.filter { it.isNotEmpty() }
                         TelegramRepository.saveCustomChannels(context, list)
                         Toast.makeText(context, "Catalogue channels saved!", Toast.LENGTH_SHORT).show()
                     }

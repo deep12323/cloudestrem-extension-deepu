@@ -207,7 +207,7 @@ object TelegramRepository {
             cachedCustomChannels = emptyList()
             return emptyList()
         }
-        val list = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val list = raw.split(",", " ", "\n", "\r", ";").map { it.trim() }.filter { it.isNotEmpty() }
         cachedCustomChannels = list
         return list
     }
