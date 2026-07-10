@@ -295,13 +295,15 @@ object TelegramClient {
             p.databaseEncryptionKey = ByteArray(0)
             p.useFileDatabase = true
             p.useChatInfoDatabase = true
-            p.useMessageDatabase = true // We want to enable message database to search globally efficiently
+            p.useMessageDatabase = false // Disable to prevent the database from growing to gigabytes
             p.useSecretChats = false
             p.systemLanguageCode = "en"
             p.deviceModel = "Android Device"
             p.systemVersion = "Android"
             p.applicationVersion = "1.0"
         }, {
+            // Automatically clean up any orphaned streaming files from previous crashed sessions
+            optimizeStorage()
             // After parameters are set, configure cache size limits
             val limitMb = TelegramRepository.getCacheLimitMb(context)
             updateCacheLimit(limitMb)

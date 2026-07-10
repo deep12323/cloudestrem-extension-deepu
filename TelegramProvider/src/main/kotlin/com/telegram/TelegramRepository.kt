@@ -87,8 +87,11 @@ object TelegramRepository {
     }
 
     fun getCacheSize(context: Context): Long {
-        val dir = File(context.filesDir, "tdlib_files")
-        return if (dir.exists()) dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
+        val dir1 = File(context.filesDir, "tdlib_files")
+        val dir2 = File(context.filesDir, "tdlib")
+        val size1 = if (dir1.exists()) dir1.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
+        val size2 = if (dir2.exists()) dir2.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
+        return size1 + size2
     }
 
     fun clearCache(context: Context) {
