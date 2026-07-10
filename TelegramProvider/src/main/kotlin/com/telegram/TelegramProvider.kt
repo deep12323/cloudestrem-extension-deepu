@@ -22,9 +22,11 @@ class TelegramProvider : MainAPI() {
         get() {
             val context = try { TelegramRepository.getContext() } catch (e: Exception) { return emptyList() }
             val channels = TelegramRepository.getCustomChannels(context)
-            return mainPageOf(
-                *channels.map { it.toString() to "Channel" }.toTypedArray()
-            )
+            val prefs = context.getSharedPreferences("telegram_plugin_prefs", android.content.Context.MODE_PRIVATE)
+            return channels.map { 
+                val cachedTitle = prefs.getString("title_$it", "Channel $it") ?: "Channel $it"
+                MainPageData(it.toString(), cachedTitle)
+            }
         }
 
     override suspend fun getMainPage(
@@ -41,6 +43,15 @@ class TelegramProvider : MainAPI() {
         val title = result.first
         val videos = result.second
 
+        // Cache the title for future mainPage calls
+        try {
+            val context = TelegramRepository.getContext()
+            context.getSharedPreferences("telegram_plugin_prefs", android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putString("title_$chanId", title)
+                .apply()
+        } catch (e: Exception) {}
+
         if (videos.isEmpty() && page > 1) return null
 
         val searchResponses = videos.mapNotNull { msg ->
@@ -48,7 +59,7 @@ class TelegramProvider : MainAPI() {
             val name = msg.fileName
             val thumbId = msg.thumbnailFileId?.toString() ?: ""
             // Remove fileId from URL to ensure watch history stability, as fileId changes across TDLib sessions.
-            val url = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+            val url = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
             
             val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
             
@@ -57,9 +68,10 @@ class TelegramProvider : MainAPI() {
             }
         }
 
-        // Enable endless pagination horizontally (assuming result > 0 and next page could have more)
+        // Enable endless pagination vertically/horizontally
         val hasNext = videos.isNotEmpty()
-        return newHomePageResponse(title, searchResponses, hasNext = hasNext)
+        // MUST return request.name for pagination to properly map in Cloudstream
+        return newHomePageResponse(request.name, searchResponses, hasNext = hasNext)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
