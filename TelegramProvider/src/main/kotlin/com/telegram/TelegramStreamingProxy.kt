@@ -173,7 +173,8 @@ object TelegramStreamingProxy {
 
         // Get file info
         val fileInfo = getFileInfo(fileId)
-        val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: urlSize
+        val exactSize = fileInfo?.second?.takeIf { it > 0 } ?: urlSize.takeIf { it > 0 }
+        val totalSize = exactSize ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
         val localPath = fileInfo?.first
         
         Log.d(TAG, "Streaming fileId=$fileId totalSize=$totalSize range=$rangeHeader")
@@ -342,15 +343,14 @@ object TelegramStreamingProxy {
         return dataBytes
     }
 
-    private suspend fun getFileInfo(fileId: Int): Pair<String?, Long>? {
+    private suspend fun getFileInfo(fileId: Int): Triple<String?, Long, Long>? {
         val file = try {
             TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File
         } catch (e: Exception) {
             null
         } ?: return null
-        val totalSize = file.size.takeIf { it > 0 } ?: file.expectedSize
         val localPath = file.local?.path?.takeIf { it.isNotBlank() }
-        return Pair(localPath, totalSize.toLong())
+        return Triple(localPath, file.size, file.expectedSize)
     }
 
     private fun parseRange(header: String?): Pair<Long?, Long?> {
