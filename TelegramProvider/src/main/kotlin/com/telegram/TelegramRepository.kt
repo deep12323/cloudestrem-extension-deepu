@@ -158,7 +158,7 @@ object TelegramRepository {
                         req.offset = 0
                         req.limit = limit
                         req.filter = TdApi.SearchMessagesFilterDocument()
-                        req.topicId = 0
+                        req.topicId = null
                     })
                     
                     val found = (historyResult as? TdApi.FoundChatMessages)
@@ -186,7 +186,7 @@ object TelegramRepository {
                         req.offset = 0
                         req.limit = limit
                         req.filter = TdApi.SearchMessagesFilterVideo()
-                        req.topicId = 0
+                        req.topicId = null
                     })
                     
                     val found = (historyResult as? TdApi.FoundChatMessages)
