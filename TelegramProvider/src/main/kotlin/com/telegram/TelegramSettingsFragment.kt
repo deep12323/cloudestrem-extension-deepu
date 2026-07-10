@@ -236,6 +236,22 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                         val list = input.split(",", " ", "\n", "\r", ";").map { it.trim() }.filter { it.isNotEmpty() }
                         TelegramRepository.saveCustomChannels(context, list)
                         Toast.makeText(context, "Catalogue channels saved!", Toast.LENGTH_SHORT).show()
+                        
+                        // Force TDLib to sync chats so raw IDs are cached
+                        kotlinx.coroutines.GlobalScope.launch {
+                            try {
+                                var loaded = false
+                                var attempt = 0
+                                while (!loaded && attempt < 5) {
+                                    try {
+                                        TelegramClient.sendRequest(org.drinkless.tdlib.TdApi.LoadChats(org.drinkless.tdlib.TdApi.ChatListMain(), 100))
+                                        attempt++
+                                    } catch (e: Exception) {
+                                        loaded = true
+                                    }
+                                }
+                            } catch (e: Exception) {}
+                        }
                     }
                 }
 
