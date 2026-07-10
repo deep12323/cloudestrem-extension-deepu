@@ -71,10 +71,15 @@ class TelegramProvider : MainAPI() {
         }
 
         val hasNext = videos.isNotEmpty()
-        return newHomePageResponse(
-            HomePageList(request.name, searchResponses, true),
-            hasNext
-        )
+        return try {
+            newHomePageResponse(
+                HomePageList(request.name, searchResponses, true),
+                hasNext
+            )
+        } catch (e: Throwable) {
+            // Fallback for older Cloudstream versions that don't support horizontal images
+            newHomePageResponse(request.name, searchResponses, hasNext)
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
