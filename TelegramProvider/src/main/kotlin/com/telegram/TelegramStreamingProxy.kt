@@ -289,10 +289,20 @@ object TelegramStreamingProxy {
         val headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: $totalSize\r\nConnection: close\r\n\r\n"
         output.write(headers.toByteArray())
 
+        runCatching {
+            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                req.fileId = fileId
+                req.priority = DOWNLOAD_PRIORITY
+                req.offset = 0
+                req.limit = totalSize.toLong()
+                req.synchronous = false
+            })
+        }
+
         var currentOffset = 0L
         while (currentOffset < totalSize && running) {
             val remaining = (totalSize - currentOffset).toInt()
-            val chunk = downloadChunk(fileId, fileInfo.first, currentOffset, remaining)
+            val chunk = downloadChunk(fileId, currentOffset, remaining)
             if (chunk == null || chunk.isEmpty()) {
                 break
             }
