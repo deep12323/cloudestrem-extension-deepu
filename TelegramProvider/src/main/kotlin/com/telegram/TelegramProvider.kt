@@ -39,12 +39,14 @@ class TelegramProvider : MainAPI() {
         val allVideos = mutableListOf<TelegramVideoMessage>()
         var title = ""
         
-        // Fetch up to 500 items (5 pages of 100) since endless pagination is disabled
-        for (p in 1..5) {
+        // Fetch all items since endless pagination is disabled
+        var p = 1
+        while (true) {
             val result = TelegramRepository.getChannelVideos(chanId, page = p, limit = 100) ?: break
             title = result.first
             allVideos.addAll(result.second)
             if (result.second.size < 100) break
+            p++
         }
         
         if (allVideos.isEmpty()) return null
