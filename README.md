@@ -19,12 +19,17 @@ A powerful, native [Cloudstream 3](https://github.com/recloudstream/cloudstream)
 
 1. **Install the Plugin Repo**: Open Cloudstream > Settings > Extensions > Add Repository, and paste this URL:
    ```text
-   https://raw.githubusercontent.com/deepu2135/TestPlugins/builds/repo.json
+   https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/repo.json
    ```
 2. **Download the Plugin**: Install the **Telegram** extension. This will automatically install two providers: `Telegram` and `Teleflix`.
 3. **Authenticate**: Go to the extension settings (gear icon) and log into your Telegram account using your phone number or QR code.
 4. **Add Channels**: In the settings, enter a comma-separated list of your favorite movie channels (e.g., `@movie_channel, @series_channel`).
 5. **Watch**: Go back to the Cloudstream homepage! Use the `Teleflix` provider for a beautiful UI of trending movies/series, or use the `Telegram` provider to browse your raw channels directly!
+
+## 💡 Troubleshooting Playback Issues
+
+If a video fails to play, buffers endlessly, or has no audio, it is likely encoded in a format that Cloudstream's built-in ExoPlayer struggles to decode natively (e.g. heavy HEVC/x265 `.mkv` files).
+**Fix**: Simply tap the **"Play in external player"** icon in Cloudstream and choose a robust external player like **MPV (or MPVEX)** or **VLC**—they have much broader codec support and will play the stream flawlessly!
 
 ## 🛠️ Architecture
 

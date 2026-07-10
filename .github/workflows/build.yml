@@ -34,7 +34,7 @@ jobs:
             "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/deepu2135/TestPlugins/builds/plugins.json?v=2"
+              "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/plugins.json?v=2"
             ]
           }' > builds/repo.json
 
@@ -42,7 +42,7 @@ jobs:
             {
               "name": "Telegram",
               "internalName": "TelegramProvider",
-              "url": "https://raw.githubusercontent.com/deepu2135/TestPlugins/builds/TelegramProvider.cs3?v=2",
+              "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TelegramProvider.cs3?v=2",
               "tvTypes": ["Movie"],
               "language": "en",
               "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg",
