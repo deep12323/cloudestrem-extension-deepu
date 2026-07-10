@@ -335,7 +335,9 @@ object TelegramRepository {
                 val hasVideoMime = mime.startsWith("video/") || mime.contains("matroska")
                 val hasVideoKeywords = listOf("mkv", "mp4", "1080p", "720p", "480p", "4k", "hevc", "x265", "x264", "web-dl", "webrip", "bluray").any { filenameLower.contains(it) }
                 
-                val isVideo = hasVideoExt || hasVideoMime || hasVideoKeywords
+                val isArchiveOrSplit = ext in listOf("rar", "zip", "7z", "tar", "gz", "bz2") || ext.matches(Regex("^\\d+$"))
+                
+                val isVideo = !isArchiveOrSplit && (hasVideoExt || hasVideoMime || hasVideoKeywords)
                 
                 if (!isVideo) return
 
