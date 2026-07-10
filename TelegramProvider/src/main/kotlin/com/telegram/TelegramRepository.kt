@@ -92,7 +92,39 @@ object TelegramRepository {
     }
 
     fun clearCache(context: Context) {
-        File(context.filesDir, "tdlib_files").listFiles()?.forEach { it.deleteRecursively() }
+        TelegramClient.sendRequestAsync(TdApi.OptimizeStorage().also { req ->
+            req.size = 0
+            req.ttl = 0
+            req.count = 0
+            req.immunityDelay = 0
+            req.fileTypes = arrayOf(
+                TdApi.FileTypeAnimation(),
+                TdApi.FileTypeAudio(),
+                TdApi.FileTypeDocument(),
+                TdApi.FileTypeNone(),
+                TdApi.FileTypePhoto(),
+                TdApi.FileTypeProfilePhoto(),
+                TdApi.FileTypeSecret(),
+                TdApi.FileTypeSecretThumbnail(),
+                TdApi.FileTypeSecure(),
+                TdApi.FileTypeSticker(),
+                TdApi.FileTypeThumbnail(),
+                TdApi.FileTypeUnknown(),
+                TdApi.FileTypeVideo(),
+                TdApi.FileTypeVideoNote(),
+                TdApi.FileTypeVoiceNote(),
+                TdApi.FileTypeWallpaper()
+            )
+            req.chatIds = emptyArray()
+            req.excludeChatIds = emptyArray()
+            req.returnDeletedFileStatistics = false
+            req.chatLimit = 0
+        })
+        
+        // Also try to manually wipe just in case
+        try {
+            File(context.filesDir, "tdlib_files").listFiles()?.forEach { it.deleteRecursively() }
+        } catch (e: Exception) {}
     }
 
     suspend fun getChatId(identifier: String): Long? {
