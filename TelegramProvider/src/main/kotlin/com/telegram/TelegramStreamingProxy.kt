@@ -259,11 +259,16 @@ object TelegramStreamingProxy {
     ): ByteArray? {
         withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             try {
+                val tdlibPrefetch = when {
+                    prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
+                    prefetchSizeMb <= 0L -> limit.toLong() // 0 in settings means no prefetch (only fetch the current chunk)
+                    else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
+                }
                 TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                     req.fileId = fileId
                     req.priority = DOWNLOAD_PRIORITY
                     req.offset = offset
-                    req.limit = prefetchSizeMb * 1024L * 1024L
+                    req.limit = tdlibPrefetch
                     req.synchronous = false
                 })
             } catch (e: Exception) {

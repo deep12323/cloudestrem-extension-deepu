@@ -263,7 +263,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 }
 
                 val bufferLimitLabel = TextView(context).apply {
-                    text = "Buffer Size in MB (Default 20MB):"
+                    text = "Buffer Size in MB (0 = No prefetch, -1 = Unlimited):"
                     setTextColor(Color.WHITE)
                 }
 
