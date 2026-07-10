@@ -166,7 +166,7 @@ object TelegramRepository {
                     
                     val found = (historyResult as? TdApi.FoundChatMessages)
                     if (found != null) {
-                        currentDocCursor = if (found.nextFromMessageId == 0L || found.messages.isEmpty()) -1L else found.nextFromMessageId
+                        currentDocCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
                         prefs.edit().putLong("${chatId}_doc_page_${page + 1}", currentDocCursor).apply()
                         fetchDoc = currentDocCursor != -1L
                         for (msg in found.messages) extractVideoMessage(msg, seen, results)
@@ -194,7 +194,7 @@ object TelegramRepository {
                     
                     val found = (historyResult as? TdApi.FoundChatMessages)
                     if (found != null) {
-                        currentVidCursor = if (found.nextFromMessageId == 0L || found.messages.isEmpty()) -1L else found.nextFromMessageId
+                        currentVidCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
                         prefs.edit().putLong("${chatId}_vid_page_${page + 1}", currentVidCursor).apply()
                         fetchVid = currentVidCursor != -1L
                         for (msg in found.messages) extractVideoMessage(msg, seen, results)
