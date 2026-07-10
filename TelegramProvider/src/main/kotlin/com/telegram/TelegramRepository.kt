@@ -138,60 +138,73 @@ object TelegramRepository {
             }.apply()
         }
 
-        val docCursor = if (page == 1) 0L else prefs.getLong("${chatId}_doc_page_$page", 0L)
-        val vidCursor = if (page == 1) 0L else prefs.getLong("${chatId}_vid_page_$page", 0L)
+        var currentDocCursor = if (page == 1) 0L else prefs.getLong("${chatId}_doc_page_$page", 0L)
+        var currentVidCursor = if (page == 1) 0L else prefs.getLong("${chatId}_vid_page_$page", 0L)
 
         // Only fetch if cursor is not -1 (which we'll use to indicate end of stream)
-        val fetchDoc = docCursor != -1L
-        val fetchVid = vidCursor != -1L
+        var fetchDoc = currentDocCursor != -1L
+        var fetchVid = currentVidCursor != -1L
 
-        if (fetchDoc) {
-            try {
-                val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
-                    req.chatId = chatId
-                    req.query = ""
-                    req.senderId = null
-                    req.fromMessageId = docCursor
-                    req.offset = 0
-                    req.limit = limit
-                    req.filter = TdApi.SearchMessagesFilterDocument()
-                    req.topicId = null
-                })
-                
-                val found = (historyResult as? TdApi.FoundChatMessages)
-                if (found != null) {
-                    val nextId = if (found.nextFromMessageId == 0L || found.messages.isEmpty()) -1L else found.nextFromMessageId
-                    prefs.edit().putLong("${chatId}_doc_page_${page + 1}", nextId).apply()
-                    for (msg in found.messages) extractVideoMessage(msg, seen, results)
+        // Loop until we find at least one valid video/document or reach the end of history.
+        // This prevents pagination from breaking if a chunk of 50 messages contains only non-video documents (e.g. PDFs/SRTs).
+        while (results.isEmpty() && (fetchDoc || fetchVid)) {
+            if (fetchDoc) {
+                try {
+                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = currentDocCursor
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = TdApi.SearchMessagesFilterDocument()
+                        req.topicId = 0
+                    })
+                    
+                    val found = (historyResult as? TdApi.FoundChatMessages)
+                    if (found != null) {
+                        currentDocCursor = if (found.nextFromMessageId == 0L || found.messages.isEmpty()) -1L else found.nextFromMessageId
+                        prefs.edit().putLong("${chatId}_doc_page_${page + 1}", currentDocCursor).apply()
+                        fetchDoc = currentDocCursor != -1L
+                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                    } else {
+                        fetchDoc = false
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Search document messages failed: ${e.message}")
+                    fetchDoc = false
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Search document messages failed: ${e.message}")
+            }
+
+            if (fetchVid) {
+                try {
+                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = currentVidCursor
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = TdApi.SearchMessagesFilterVideo()
+                        req.topicId = 0
+                    })
+                    
+                    val found = (historyResult as? TdApi.FoundChatMessages)
+                    if (found != null) {
+                        currentVidCursor = if (found.nextFromMessageId == 0L || found.messages.isEmpty()) -1L else found.nextFromMessageId
+                        prefs.edit().putLong("${chatId}_vid_page_${page + 1}", currentVidCursor).apply()
+                        fetchVid = currentVidCursor != -1L
+                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                    } else {
+                        fetchVid = false
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Search video messages failed: ${e.message}")
+                    fetchVid = false
+                }
             }
         }
 
-        if (fetchVid) {
-            try {
-                val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
-                    req.chatId = chatId
-                    req.query = ""
-                    req.senderId = null
-                    req.fromMessageId = vidCursor
-                    req.offset = 0
-                    req.limit = limit
-                    req.filter = TdApi.SearchMessagesFilterVideo()
-                    req.topicId = null
-                })
-                
-                val found = (historyResult as? TdApi.FoundChatMessages)
-                if (found != null) {
-                    val nextId = if (found.nextFromMessageId == 0L || found.messages.isEmpty()) -1L else found.nextFromMessageId
-                    prefs.edit().putLong("${chatId}_vid_page_${page + 1}", nextId).apply()
-                    for (msg in found.messages) extractVideoMessage(msg, seen, results)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Search video messages failed: ${e.message}")
-            }
-        }
         
         results.sortByDescending { it.messageId }
 
@@ -312,8 +325,13 @@ object TelegramRepository {
                 val mime = content.document.mimeType ?: ""
                 val filename = content.document.fileName ?: "Default_Name.mkv"
                 val ext = filename.substringAfterLast('.', "").lowercase()
-                val isVideo = mime.startsWith("video/") || mime.contains("matroska") || ext in listOf("mkv", "mp4", "avi", "mov", "flv", "wmv", "webm")
-                if (!isVideo) return
+                val isVideo = mime.startsWith("video/") || mime.contains("matroska") || ext in listOf("mkv", "mp4", "avi", "mov", "flv", "wmv", "webm", "m4v", "3gp", "ts", "m2ts", "vob")
+                // Also accept generic binary streams if they have a video extension, or generic names if they have video mime type
+                if (!isVideo && mime != "application/octet-stream") return
+                
+                // If it's an octet-stream and doesn't have a video extension, it's probably just a random file, not a video.
+                if (!isVideo && mime == "application/octet-stream" && ext !in listOf("mkv", "mp4", "avi", "mov", "flv", "wmv", "webm", "m4v", "3gp", "ts", "m2ts", "vob")) return
+
                 val key = filename to content.document.document.size
                 if (seen.add(key)) {
                     results.add(TelegramVideoMessage(
