@@ -72,6 +72,7 @@ object TelegramStreamingProxy {
             val path = parts[1] // /file/{fileId} or /thumbnail/{fileId}
             var fileId: Int? = null
             var isThumbnail = false
+            var urlSize = 0L
             var fileName: String? = null
             if (path.startsWith("/file/")) {
                 val segment = path.substringAfter("/file/").substringBefore("?")
@@ -79,6 +80,10 @@ object TelegramStreamingProxy {
                 val encodedName = segment.substringAfter("/", "").takeIf { it.isNotBlank() }
                 if (encodedName != null) {
                     fileName = java.net.URLDecoder.decode(encodedName, "UTF-8")
+                }
+                val queryStr = path.substringAfter("?", "")
+                if (queryStr.isNotBlank()) {
+                    urlSize = queryStr.split("&").find { it.startsWith("size=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
                 }
             } else if (path.startsWith("/thumbnail/")) {
                 val segment = path.substringAfter("/thumbnail/").substringBefore("?")
@@ -125,7 +130,7 @@ object TelegramStreamingProxy {
                     activeStreams[fileId] = (activeStreams[fileId] ?: 0) + 1
                 }
                 try {
-                    streamFile(fileId, fileName, rangeHeader, output)
+                    streamFile(fileId, fileName, rangeHeader, output, urlSize)
                 } finally {
                     val count = synchronized(activeStreams) {
                         val current = (activeStreams[fileId] ?: 1) - 1
@@ -152,7 +157,7 @@ object TelegramStreamingProxy {
         }
     }
 
-    private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream) {
+    private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long) {
         val prev = lastStreamedFileId
         if (prev != null && prev != fileId) {
             scope.launch { deleteFile(prev) }
@@ -162,12 +167,10 @@ object TelegramStreamingProxy {
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
 
         // Get file info
-        val fileInfo = getFileInfo(fileId) ?: run {
-            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
-            return
-        }
-        val totalSize = fileInfo.second
-        val localPath = fileInfo.first
+        val fileInfo = getFileInfo(fileId)
+        val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: urlSize
+        val localPath = fileInfo?.first
+        
         Log.d(TAG, "Streaming fileId=$fileId totalSize=$totalSize range=$rangeHeader")
 
         if (totalSize <= 0L) {
@@ -240,9 +243,9 @@ object TelegramStreamingProxy {
         }
     }
 
-    fun getUrl(fileId: Int, fileName: String): String {
+    fun getUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String {
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/file/$fileId/$encodedName"
+        return "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize"
     }
 
     fun getThumbnailUrl(chatId: Long, messageId: Long): String {

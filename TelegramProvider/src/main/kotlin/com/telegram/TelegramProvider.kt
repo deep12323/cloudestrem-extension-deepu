@@ -125,9 +125,10 @@ class TelegramProvider : MainAPI() {
         val chatId = uri.getQueryParameter("chatId")?.toLongOrNull() ?: return false
         val messageId = uri.getQueryParameter("messageId")?.toLongOrNull() ?: return false
         val name = uri.getQueryParameter("name") ?: "Telegram File"
+        val size = uri.getQueryParameter("size")?.toLongOrNull() ?: 0L
 
         val freshFileId = TelegramRepository.getFreshFileId(chatId, messageId) ?: return false
-        val streamUrl = TelegramRepository.getStreamUrl(freshFileId, name)
+        val streamUrl = TelegramRepository.getStreamUrl(freshFileId, name, size)
         val quality = parseQuality(name)
 
         val link = newExtractorLink(
