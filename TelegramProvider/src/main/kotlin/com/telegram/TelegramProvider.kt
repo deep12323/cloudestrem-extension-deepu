@@ -70,12 +70,10 @@ class TelegramProvider : MainAPI() {
             }
         }
 
-        // Enable endless pagination vertically/horizontally
         val hasNext = videos.isNotEmpty()
-        // MUST return request.name for pagination to properly map in Cloudstream
-        return HomePageResponse(
-            listOf(HomePageList(request.name, searchResponses, isHorizontalImages = true)),
-            hasNext = hasNext
+        return newHomePageResponse(
+            HomePageList(request.name, searchResponses, true),
+            hasNext
         )
     }
 
