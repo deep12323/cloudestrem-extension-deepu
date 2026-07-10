@@ -159,8 +159,17 @@ object TelegramStreamingProxy {
             return
         }
 
-        val start = rangeStart ?: 0L
-        val end = rangeEnd ?: (totalSize - 1L)
+        val start: Long
+        val end: Long
+
+        if (rangeStart == null && rangeEnd != null) {
+            // Suffix byte range: e.g., bytes=-500 means the last 500 bytes
+            start = maxOf(0L, totalSize - rangeEnd)
+            end = totalSize - 1L
+        } else {
+            start = rangeStart ?: 0L
+            end = rangeEnd ?: (totalSize - 1L)
+        }
         val length = end - start + 1
 
         val ext = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
