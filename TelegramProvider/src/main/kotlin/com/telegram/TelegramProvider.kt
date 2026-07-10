@@ -31,27 +31,19 @@ class TelegramProvider : MainAPI() {
         page: Int,
         request: MainPageRequest
     ): HomePageResponse? {
-        if (!TelegramRepository.waitUntilAuthenticated() || page > 1) {
+        if (!TelegramRepository.waitUntilAuthenticated()) {
             return null
         }
 
         val chanId = request.data
-        val allVideos = mutableListOf<TelegramVideoMessage>()
-        var title = ""
+        val result = TelegramRepository.getChannelVideos(chanId, page = page, limit = 50) ?: return null
         
-        // Fetch all items since endless pagination is disabled
-        var p = 1
-        while (true) {
-            val result = TelegramRepository.getChannelVideos(chanId, page = p, limit = 100) ?: break
-            title = result.first
-            allVideos.addAll(result.second)
-            if (result.second.size < 100) break
-            p++
-        }
-        
-        if (allVideos.isEmpty()) return null
+        val title = result.first
+        val videos = result.second
 
-        val searchResponses = allVideos.mapNotNull { msg ->
+        if (videos.isEmpty() && page > 1) return null
+
+        val searchResponses = videos.mapNotNull { msg ->
             val size = msg.fileSize
             val name = msg.fileName
             val thumbId = msg.thumbnailFileId?.toString() ?: ""
@@ -65,8 +57,9 @@ class TelegramProvider : MainAPI() {
             }
         }
 
-        // Disable endless pagination horizontally
-        return newHomePageResponse(title, searchResponses, hasNext = false)
+        // Enable endless pagination horizontally (assuming result > 0 and next page could have more)
+        val hasNext = videos.isNotEmpty()
+        return newHomePageResponse(title, searchResponses, hasNext = hasNext)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
