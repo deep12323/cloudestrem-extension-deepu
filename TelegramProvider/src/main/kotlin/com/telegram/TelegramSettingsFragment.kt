@@ -254,7 +254,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 val btnSaveCacheLimit = Button(context).apply {
                     text = "Save Cache Limit"
                     setOnClickListener {
-                        val limitStr = cacheLimitInput.text.toString()
+                        val limitStr = cacheLimitInput.text.toString().trim()
                         val limit = limitStr.toLongOrNull() ?: 1L
                         TelegramRepository.saveCacheLimitMb(context, limit)
                         TelegramClient.updateCacheLimit(limit)
@@ -279,7 +279,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 val btnSaveBufferLimit = Button(context).apply {
                     text = "Save Buffer Size"
                     setOnClickListener {
-                        val limitStr = bufferLimitInput.text.toString()
+                        val limitStr = bufferLimitInput.text.toString().trim()
                         val limit = limitStr.toLongOrNull() ?: 20L
                         TelegramRepository.saveBufferSizeMb(context, limit)
                         TelegramStreamingProxy.prefetchSizeMb = limit
