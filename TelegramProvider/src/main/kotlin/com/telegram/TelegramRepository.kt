@@ -39,8 +39,10 @@ object TelegramRepository {
         appContext = context.applicationContext
         TelegramStreamingProxy.start()
         
-        // Unconditionally wipe any old media cache on startup to prevent cache buildup
-        clearCache(context)
+        // Only wipe old media cache on startup if the user chose "No Cache" (limit <= 0)
+        if (getCacheLimitMb(context) <= 0L) {
+            clearCache(context)
+        }
 
         val hasValidSession = sessionMarker(context).exists()
         if (!hasValidSession) {
@@ -174,6 +176,16 @@ object TelegramRepository {
         val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("custom_channels", channels.joinToString(",")).apply()
         cachedCustomChannels = channels
+    }
+
+    fun getCacheLimitMb(context: Context): Long {
+        val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
+        return prefs.getLong("cache_limit_mb", 1L) // Default to 1MB (No Cache)
+    }
+
+    fun saveCacheLimitMb(context: Context, limit: Long) {
+        val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putLong("cache_limit_mb", limit).apply()
     }
 
     suspend fun searchVideoMessages(

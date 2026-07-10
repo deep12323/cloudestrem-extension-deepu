@@ -303,9 +303,19 @@ object TelegramClient {
             p.applicationVersion = "1.0"
         }, {
             // After parameters are set, configure cache size limits
-            client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(1024L * 1024L * 1L)), null) // 1 MB limit (TDLib requires downloading to disk to stream, but this forces immediate deletion)
-            client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(3600L)), null)
+            val limitMb = TelegramRepository.getCacheLimitMb(context)
+            updateCacheLimit(limitMb)
         })
+    }
+    
+    fun updateCacheLimit(limitMb: Long) {
+        val tdlibLimit = when {
+            limitMb == -1L -> 0L // 0 means unlimited in TDLib
+            limitMb <= 0L -> 1024L * 1024L * 1L // 1MB for No Cache (can't use 0 because 0 is unlimited)
+            else -> limitMb * 1024L * 1024L
+        }
+        client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(tdlibLimit)), null)
+        client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(3600L)), null)
     }
 
     private fun handleUpdate(context: Context, obj: TdApi.Object) {
