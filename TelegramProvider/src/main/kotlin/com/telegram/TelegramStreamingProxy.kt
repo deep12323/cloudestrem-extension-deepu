@@ -164,11 +164,6 @@ object TelegramStreamingProxy {
         }
         lastStreamedFileId = fileId
 
-        // Force cancel any active download for this file to ensure TDLib instantly respects our new offset priority
-        runCatching {
-            TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-        }
-
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
 
         // Get file info
@@ -225,10 +220,32 @@ object TelegramStreamingProxy {
 
         output.write(headers.toByteArray())
 
+        val prefetchSizeMb = TelegramRepository.getCacheLimitMb(context)
+        var activeDownloadEnd = -1L
+
         var offset = start
         while (offset <= end && running) {
             val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
-            val bytes = downloadChunk(fileId, localPath, offset, chunkSize)
+
+            if (offset >= activeDownloadEnd) {
+                val tdlibPrefetch = when {
+                    prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
+                    prefetchSizeMb <= 0L -> chunkSize.toLong()
+                    else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
+                }
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = fileId
+                        req.priority = DOWNLOAD_PRIORITY
+                        req.offset = offset
+                        req.limit = tdlibPrefetch
+                        req.synchronous = false
+                    })
+                }
+                activeDownloadEnd = if (tdlibPrefetch == 0L) totalSize else offset + tdlibPrefetch
+            }
+
+            val bytes = downloadChunk(fileId, offset, chunkSize)
             if (bytes == null || bytes.isEmpty()) break
             output.write(bytes)
             output.flush()
@@ -287,29 +304,9 @@ object TelegramStreamingProxy {
 
     private suspend fun downloadChunk(
         fileId: Int,
-        @Suppress("UNUSED_PARAMETER") localPath: String?,
         offset: Long,
         limit: Int
     ): ByteArray? {
-        withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
-            try {
-                val tdlibPrefetch = when {
-                    prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
-                    prefetchSizeMb <= 0L -> limit.toLong() // 0 in settings means no prefetch (only fetch the current chunk)
-                    else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
-                }
-                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                    req.fileId = fileId
-                    req.priority = DOWNLOAD_PRIORITY
-                    req.offset = offset
-                    req.limit = tdlibPrefetch
-                    req.synchronous = false
-                })
-            } catch (e: Exception) {
-                Log.e(TAG, "DownloadFile failed at offset $offset: ${e.message}")
-            }
-        }
-
         val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             var attempts = 0
             while (attempts < 300 && running) {
