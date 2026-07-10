@@ -8,20 +8,22 @@ import com.lagradost.cloudstream3.plugins.Plugin
 @CloudstreamPlugin
 class TelegramPlugin : Plugin() {
 
-    override var openSettings: ((Context) -> Unit)? = { ctx ->
-        var activity: AppCompatActivity? = null
-        var currentContext = ctx
-        while (currentContext is android.content.ContextWrapper) {
-            if (currentContext is AppCompatActivity) {
-                activity = currentContext
-                break
+    init {
+        openSettings = { ctx ->
+            var activity: AppCompatActivity? = null
+            var currentContext = ctx
+            while (currentContext is android.content.ContextWrapper) {
+                if (currentContext is AppCompatActivity) {
+                    activity = currentContext
+                    break
+                }
+                currentContext = currentContext.baseContext
             }
-            currentContext = currentContext.baseContext
-        }
-        
-        val frag = TelegramSettingsFragment(this)
-        activity?.let {
-            frag.show(it.supportFragmentManager, "TelegramSettings")
+            
+            val frag = TelegramSettingsFragment(this)
+            activity?.let {
+                frag.show(it.supportFragmentManager, "TelegramSettings")
+            }
         }
     }
 
