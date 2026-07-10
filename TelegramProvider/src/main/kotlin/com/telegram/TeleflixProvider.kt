@@ -134,10 +134,15 @@ class TeleflixProvider : MainAPI() {
             val s = match.groupValues[1].toInt()
             val e = match.groupValues[2].toInt()
             val baseName = data.substring(0, match.range.first).trim()
-            queries.add("$baseName ${s}x${String.format("%02d", e)}")
+            val sStr = String.format("%02d", s)
+            val eStr = String.format("%02d", e)
+            queries.add("$baseName ${s}x$eStr")
             queries.add("$baseName ${s}x$e")
-            queries.add("$baseName S${String.format("%02d", s)} E${String.format("%02d", e)}")
+            queries.add("$baseName S$sStr E$eStr")
+            queries.add("$baseName Season $s Episode $e")
+            queries.add("$baseName S$s E$e")
             queries.add(baseName) // Fallback to just the series name
+            queries.add(baseName.replace(" ", "")) // Fallback for BreakingBadS01E01 without spaces
         }
 
         // Punctuation and spacing variations for movies and shows (e.g. Spider-Man -> Spider Man)
