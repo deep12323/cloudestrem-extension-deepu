@@ -52,11 +52,11 @@ class TelegramProvider : MainAPI() {
         if (allVideos.isEmpty()) return null
 
         val searchResponses = allVideos.mapNotNull { msg ->
-            val fileId = msg.fileId
             val size = msg.fileSize
             val name = msg.fileName
             val thumbId = msg.thumbnailFileId?.toString() ?: ""
-            val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}&thumbnailFileId=$thumbId"
+            // Remove fileId from URL to ensure watch history stability, as fileId changes across TDLib sessions.
+            val url = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
             
             val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
             
@@ -74,11 +74,10 @@ class TelegramProvider : MainAPI() {
         val messages = TelegramRepository.searchVideoMessages(query)
         
         return messages.mapNotNull { msg ->
-                val fileId = msg.fileId
                 val size = msg.fileSize
                 val name = msg.fileName
                 val thumbId = msg.thumbnailFileId?.toString() ?: ""
-                val url = "telegram://file?fileId=$fileId&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&chatId=${msg.chatId}&messageId=${msg.messageId}&thumbnailFileId=$thumbId"
+                val url = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
                 
                 val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 
@@ -90,7 +89,6 @@ class TelegramProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val uri = android.net.Uri.parse(url)
-        val fileId = uri.getQueryParameter("fileId")?.toIntOrNull() ?: throw Exception("Invalid fileId")
         val size = uri.getQueryParameter("size")?.toLongOrNull() ?: 0L
         val name = uri.getQueryParameter("name") ?: "Telegram File"
         val thumbnailFileId = uri.getQueryParameter("thumbnailFileId")?.toIntOrNull()
@@ -110,10 +108,12 @@ class TelegramProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val uri = android.net.Uri.parse(data)
-        val fileId = uri.getQueryParameter("fileId")?.toIntOrNull() ?: return false
+        val chatId = uri.getQueryParameter("chatId")?.toLongOrNull() ?: return false
+        val messageId = uri.getQueryParameter("messageId")?.toLongOrNull() ?: return false
         val name = uri.getQueryParameter("name") ?: "Telegram File"
 
-        val streamUrl = TelegramRepository.getStreamUrl(fileId, name)
+        val freshFileId = TelegramRepository.getFreshFileId(chatId, messageId) ?: return false
+        val streamUrl = TelegramRepository.getStreamUrl(freshFileId, name)
         val quality = parseQuality(name)
 
         val link = newExtractorLink(

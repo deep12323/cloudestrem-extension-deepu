@@ -302,4 +302,19 @@ object TelegramRepository {
     fun getStreamUrl(fileId: Int, fileName: String): String = TelegramStreamingProxy.getUrl(fileId, fileName)
 
     fun getThumbnailUrl(fileId: Int): String = TelegramStreamingProxy.getThumbnailUrl(fileId)
+
+    suspend fun getFreshFileId(chatId: Long, messageId: Long): Int? {
+        if (chatId == 0L || messageId == 0L) return null
+        return try {
+            val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message ?: return null
+            when (val content = msg.content) {
+                is TdApi.MessageVideo -> content.video.video.id
+                is TdApi.MessageDocument -> content.document.document.id
+                else -> null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get fresh file id: ${e.message}")
+            null
+        }
+    }
 }
