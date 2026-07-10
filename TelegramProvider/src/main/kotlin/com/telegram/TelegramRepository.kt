@@ -372,7 +372,7 @@ object TelegramRepository {
 
     fun getStreamUrl(fileId: Int, fileName: String): String = TelegramStreamingProxy.getUrl(fileId, fileName)
 
-    fun getThumbnailUrl(fileId: Int): String = TelegramStreamingProxy.getThumbnailUrl(fileId)
+    fun getThumbnailUrl(chatId: Long, messageId: Long): String = TelegramStreamingProxy.getThumbnailUrl(chatId, messageId)
 
     suspend fun getFreshFileId(chatId: Long, messageId: Long): Int? {
         if (chatId == 0L || messageId == 0L) return null

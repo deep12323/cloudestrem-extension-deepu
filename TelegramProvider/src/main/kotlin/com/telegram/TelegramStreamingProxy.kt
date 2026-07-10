@@ -81,7 +81,23 @@ object TelegramStreamingProxy {
                     fileName = java.net.URLDecoder.decode(encodedName, "UTF-8")
                 }
             } else if (path.startsWith("/thumbnail/")) {
-                fileId = path.substringAfter("/thumbnail/").substringBefore("?").toIntOrNull()
+                val segment = path.substringAfter("/thumbnail/").substringBefore("?")
+                val thumbParts = segment.split("/")
+                if (thumbParts.size == 2) {
+                    val chatId = thumbParts[0].toLongOrNull()
+                    val messageId = thumbParts[1].toLongOrNull()
+                    if (chatId != null && messageId != null) {
+                        try {
+                            val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message
+                            if (msg != null) {
+                                when (val content = msg.content) {
+                                    is TdApi.MessageVideo -> fileId = content.video.thumbnail?.file?.id
+                                    is TdApi.MessageDocument -> fileId = content.document.thumbnail?.file?.id
+                                }
+                            }
+                        } catch (e: Exception) {}
+                    }
+                }
                 isThumbnail = true
             }
 
@@ -229,8 +245,8 @@ object TelegramStreamingProxy {
         return "http://127.0.0.1:$port/file/$fileId/$encodedName"
     }
 
-    fun getThumbnailUrl(fileId: Int): String {
-        return "http://127.0.0.1:$port/thumbnail/$fileId"
+    fun getThumbnailUrl(chatId: Long, messageId: Long): String {
+        return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId"
     }
 
     private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream) {

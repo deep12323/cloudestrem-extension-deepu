@@ -63,7 +63,7 @@ class TelegramProvider : MainAPI() {
             // Remove fileId from URL to ensure watch history stability, as fileId changes across TDLib sessions.
             val url = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
             
-            val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+            val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
             
             newMovieSearchResponse(name, url, TvType.Movie) {
                 this.posterUrl = poster
@@ -92,7 +92,7 @@ class TelegramProvider : MainAPI() {
                 val thumbId = msg.thumbnailFileId?.toString() ?: ""
                 val url = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
                 
-                val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 
                 newMovieSearchResponse(name, url, TvType.Movie) {
                     this.posterUrl = poster
