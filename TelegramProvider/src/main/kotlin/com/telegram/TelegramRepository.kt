@@ -38,6 +38,10 @@ object TelegramRepository {
     fun initialize(context: Context) {
         appContext = context.applicationContext
         TelegramStreamingProxy.start()
+        
+        // Unconditionally wipe any old media cache on startup to prevent cache buildup
+        clearCache(context)
+
         val hasValidSession = sessionMarker(context).exists()
         if (!hasValidSession) {
             File(context.filesDir, "tdlib").deleteRecursively()
