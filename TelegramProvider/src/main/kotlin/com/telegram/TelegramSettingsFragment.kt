@@ -262,6 +262,31 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                     }
                 }
 
+                val bufferLimitLabel = TextView(context).apply {
+                    text = "Buffer Size in MB (Default 20MB):"
+                    setTextColor(Color.WHITE)
+                }
+
+                val currentBuffer = TelegramRepository.getBufferSizeMb(context)
+                val bufferLimitInput = EditText(context).apply {
+                    inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
+                    hint = "20"
+                    setText(currentBuffer.toString())
+                    setTextColor(Color.WHITE)
+                    setHintTextColor(Color.GRAY)
+                }
+
+                val btnSaveBufferLimit = Button(context).apply {
+                    text = "Save Buffer Size"
+                    setOnClickListener {
+                        val limitStr = bufferLimitInput.text.toString()
+                        val limit = limitStr.toLongOrNull() ?: 20L
+                        TelegramRepository.saveBufferSizeMb(context, limit)
+                        TelegramStreamingProxy.prefetchSizeMb = limit
+                        Toast.makeText(context, "Buffer size saved!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
                 val cacheText = TextView(context).apply {
                     text = "Cache Size: Calculating..."
                     setTextColor(Color.LTGRAY)
@@ -294,6 +319,9 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 formContainer.addView(cacheLimitLabel, layoutParams)
                 formContainer.addView(cacheLimitInput, layoutParams)
                 formContainer.addView(btnSaveCacheLimit, layoutParams)
+                formContainer.addView(bufferLimitLabel, layoutParams)
+                formContainer.addView(bufferLimitInput, layoutParams)
+                formContainer.addView(btnSaveBufferLimit, layoutParams)
                 formContainer.addView(cacheText, layoutParams)
                 formContainer.addView(btnClearCache, layoutParams)
                 formContainer.addView(btnLogout, layoutParams)

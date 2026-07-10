@@ -37,6 +37,7 @@ object TelegramRepository {
 
     fun initialize(context: Context) {
         appContext = context.applicationContext
+        TelegramStreamingProxy.prefetchSizeMb = getBufferSizeMb(context)
         TelegramStreamingProxy.start()
         
         // Only wipe old media cache on startup if the user chose "No Cache" (limit <= 0)
@@ -186,6 +187,16 @@ object TelegramRepository {
     fun saveCacheLimitMb(context: Context, limit: Long) {
         val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
         prefs.edit().putLong("cache_limit_mb", limit).apply()
+    }
+
+    fun getBufferSizeMb(context: Context): Long {
+        val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
+        return prefs.getLong("buffer_size_mb", 20L) // Default 20MB
+    }
+
+    fun saveBufferSizeMb(context: Context, limit: Long) {
+        val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putLong("buffer_size_mb", limit).apply()
     }
 
     suspend fun searchVideoMessages(
