@@ -295,7 +295,7 @@ object TelegramClient {
             p.databaseEncryptionKey = ByteArray(0)
             p.useFileDatabase = true
             p.useChatInfoDatabase = true
-            p.useMessageDatabase = false // Disable to prevent the database from growing to gigabytes
+            p.useMessageDatabase = true // MUST be true for SearchChatMessages and SearchMessages to work!
             p.useSecretChats = false
             p.systemLanguageCode = "en"
             p.deviceModel = "Android Device"
