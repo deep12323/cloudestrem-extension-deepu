@@ -29,7 +29,7 @@ jobs:
           mkdir -p builds
 
           echo '{
-            "name": "Deepu Repo",
+            "name": "cloudestrem-extension-deepu",
             "iconUrl": "https://bollywood.eu.org/favicon.ico",
             "description": "Telegram Extension",
             "manifestVersion": 1,
