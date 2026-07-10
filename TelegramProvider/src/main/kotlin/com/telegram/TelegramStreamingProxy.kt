@@ -220,7 +220,6 @@ object TelegramStreamingProxy {
 
         output.write(headers.toByteArray())
 
-        val prefetchSizeMb = TelegramRepository.getCacheLimitMb(context)
         var activeDownloadEnd = -1L
 
         var offset = start
