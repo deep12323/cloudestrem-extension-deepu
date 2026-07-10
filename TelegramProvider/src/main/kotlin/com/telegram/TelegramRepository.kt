@@ -129,7 +129,7 @@ object TelegramRepository {
         if (page == 1) {
             // Clear old cursors
             prefs.edit().apply {
-                all.keys.filter { it.startsWith("${chatId}_") }.forEach { remove(it) }
+                prefs.all.keys.filter { it.startsWith("${chatId}_") }.forEach { remove(it) }
             }.apply()
         }
 
