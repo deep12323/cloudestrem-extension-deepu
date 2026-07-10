@@ -263,7 +263,7 @@ object TelegramStreamingProxy {
                     req.fileId = fileId
                     req.priority = DOWNLOAD_PRIORITY
                     req.offset = offset
-                    req.limit = (prefetchSizeMb * 1024L * 1024L).toInt()
+                    req.limit = prefetchSizeMb * 1024L * 1024L
                     req.synchronous = false
                 })
             } catch (e: Exception) {
