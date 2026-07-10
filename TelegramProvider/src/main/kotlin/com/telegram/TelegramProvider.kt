@@ -104,9 +104,10 @@ class TelegramProvider : MainAPI() {
         val uri = android.net.Uri.parse(url)
         val size = uri.getQueryParameter("size")?.toLongOrNull() ?: 0L
         val name = uri.getQueryParameter("name") ?: "Telegram File"
-        val thumbnailFileId = uri.getQueryParameter("thumbnailFileId")?.toIntOrNull()
+        val chatId = uri.getQueryParameter("chatId")?.toLongOrNull() ?: 0L
+        val messageId = uri.getQueryParameter("messageId")?.toLongOrNull() ?: 0L
 
-        val poster = thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(it) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+        val poster = if (chatId != 0L && messageId != 0L) TelegramRepository.getThumbnailUrl(chatId, messageId) else "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
 
         return newMovieLoadResponse(name, url, TvType.Movie, url) {
             this.plot = "Telegram Video File\nSize: ${formatBytes(size)}"
