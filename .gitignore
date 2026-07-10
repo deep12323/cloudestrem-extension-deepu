@@ -9,4 +9,5 @@
 .externalNativeBuild
 .cxx
 local.properties
-.vscodechat_history.txt
+.vscode
+chat_history.txt
