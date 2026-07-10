@@ -325,15 +325,19 @@ object TelegramRepository {
     private fun extractVideoMessage(msg: TdApi.Message, seen: MutableSet<Pair<String, Long>>, results: MutableList<TelegramVideoMessage>) {
         when (val content = msg.content) {
             is TdApi.MessageDocument -> {
-                val mime = content.document.mimeType ?: ""
+                val mime = content.document.mimeType?.lowercase() ?: ""
                 val filename = content.document.fileName ?: "Default_Name.mkv"
-                val ext = filename.substringAfterLast('.', "").lowercase()
-                val isVideo = mime.startsWith("video/") || mime.contains("matroska") || ext in listOf("mkv", "mp4", "avi", "mov", "flv", "wmv", "webm", "m4v", "3gp", "ts", "m2ts", "vob")
-                // Also accept generic binary streams if they have a video extension, or generic names if they have video mime type
-                if (!isVideo && mime != "application/octet-stream") return
+                val ext = filename.substringAfterLast('.', "").lowercase().trim()
+                val filenameLower = filename.lowercase()
                 
-                // If it's an octet-stream and doesn't have a video extension, it's probably just a random file, not a video.
-                if (!isVideo && mime == "application/octet-stream" && ext !in listOf("mkv", "mp4", "avi", "mov", "flv", "wmv", "webm", "m4v", "3gp", "ts", "m2ts", "vob")) return
+                // Generous video format detection
+                val hasVideoExt = ext in listOf("mkv", "mp4", "avi", "mov", "flv", "wmv", "webm", "m4v", "3gp", "ts", "m2ts", "vob")
+                val hasVideoMime = mime.startsWith("video/") || mime.contains("matroska")
+                val hasVideoKeywords = listOf("mkv", "mp4", "1080p", "720p", "480p", "4k", "hevc", "x265", "x264", "web-dl", "webrip", "bluray").any { filenameLower.contains(it) }
+                
+                val isVideo = hasVideoExt || hasVideoMime || hasVideoKeywords
+                
+                if (!isVideo) return
 
                 val key = filename to content.document.document.size
                 if (seen.add(key)) {
