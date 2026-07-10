@@ -161,7 +161,7 @@ class TeleflixProvider : MainAPI() {
         }
 
         results.forEach { msg ->
-            val streamUrl = TelegramRepository.getStreamUrl(msg.fileId)
+            val streamUrl = TelegramRepository.getStreamUrl(msg.fileId, msg.fileName)
             val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
             
             callback.invoke(

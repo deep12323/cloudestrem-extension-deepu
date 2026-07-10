@@ -275,7 +275,7 @@ object TelegramRepository {
         }
     }
 
-    fun getStreamUrl(fileId: Int): String = TelegramStreamingProxy.getUrl(fileId)
+    fun getStreamUrl(fileId: Int, fileName: String): String = TelegramStreamingProxy.getUrl(fileId, fileName)
 
     fun getThumbnailUrl(fileId: Int): String = TelegramStreamingProxy.getThumbnailUrl(fileId)
 }

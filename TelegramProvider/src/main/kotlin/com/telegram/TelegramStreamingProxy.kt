@@ -72,8 +72,14 @@ object TelegramStreamingProxy {
             val path = parts[1] // /file/{fileId} or /thumbnail/{fileId}
             var fileId: Int? = null
             var isThumbnail = false
+            var fileName: String? = null
             if (path.startsWith("/file/")) {
-                fileId = path.substringAfter("/file/").substringBefore("?").toIntOrNull()
+                val segment = path.substringAfter("/file/").substringBefore("?")
+                fileId = segment.substringBefore("/").toIntOrNull()
+                val encodedName = segment.substringAfter("/", "").takeIf { it.isNotBlank() }
+                if (encodedName != null) {
+                    fileName = java.net.URLDecoder.decode(encodedName, "UTF-8")
+                }
             } else if (path.startsWith("/thumbnail/")) {
                 fileId = path.substringAfter("/thumbnail/").substringBefore("?").toIntOrNull()
                 isThumbnail = true
@@ -103,7 +109,7 @@ object TelegramStreamingProxy {
                     activeStreams[fileId] = (activeStreams[fileId] ?: 0) + 1
                 }
                 try {
-                    streamFile(fileId, rangeHeader, output)
+                    streamFile(fileId, fileName, rangeHeader, output)
                 } finally {
                     val count = synchronized(activeStreams) {
                         val current = (activeStreams[fileId] ?: 1) - 1
@@ -130,7 +136,7 @@ object TelegramStreamingProxy {
         }
     }
 
-    private suspend fun streamFile(fileId: Int, rangeHeader: String?, output: java.io.OutputStream) {
+    private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream) {
         val prev = lastStreamedFileId
         if (prev != null && prev != fileId) {
             scope.launch { deleteFile(prev) }
@@ -157,7 +163,9 @@ object TelegramStreamingProxy {
         val end = rangeEnd ?: (totalSize - 1L)
         val length = end - start + 1
 
-        val ext = localPath?.substringAfterLast('.', "")?.lowercase() ?: ""
+        val ext = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
+            ?: localPath?.substringAfterLast('.', "")?.lowercase() ?: ""
+            
         val mimeType = when (ext) {
             "mkv" -> "video/x-matroska"
             "webm" -> "video/webm"
@@ -207,8 +215,9 @@ object TelegramStreamingProxy {
         }
     }
 
-    fun getUrl(fileId: Int): String {
-        return "http://127.0.0.1:$port/file/$fileId"
+    fun getUrl(fileId: Int, fileName: String): String {
+        val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
+        return "http://127.0.0.1:$port/file/$fileId/$encodedName"
     }
 
     fun getThumbnailUrl(fileId: Int): String {
