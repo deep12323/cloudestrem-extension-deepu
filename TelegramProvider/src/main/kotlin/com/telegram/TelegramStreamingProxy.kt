@@ -63,6 +63,26 @@ object TelegramStreamingProxy {
     }
 
     private suspend fun handleClient(socket: Socket) {
+        val clientJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+        val watchdogJob = CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val stream = socket.getInputStream()
+                val buffer = ByteArray(1)
+                while (clientJob?.isActive == true) {
+                    try {
+                        val res = stream.read(buffer)
+                        if (res == -1) break
+                    } catch (e: java.net.SocketTimeoutException) {
+                        continue
+                    } catch (e: Exception) {
+                        break
+                    }
+                }
+            } finally {
+                clientJob?.cancel()
+            }
+        }
+
         try {
             socket.soTimeout = 30000
             val reader = socket.getInputStream().bufferedReader()
@@ -139,6 +159,17 @@ object TelegramStreamingProxy {
                     }
                     if (count <= 0) {
                         synchronized(activeStreams) { activeStreams.remove(fileId) }
+                        
+                        // Immediately stop background downloading to save data
+                        scope.launch {
+                            runCatching {
+                                TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
+                                    req.fileId = fileId
+                                    req.onlyIfPending = false
+                                })
+                            }
+                        }
+                        
                         scope.launch {
                             delay(5000)
                             if ((activeStreams[fileId] ?: 0) <= 0) {
@@ -148,11 +179,14 @@ object TelegramStreamingProxy {
                     }
                 }
             }
+        } catch (e: java.util.concurrent.CancellationException) {
+            Log.d(TAG, "Client stream cancelled")
         } catch (e: IOException) {
             Log.d(TAG, "Client disconnected: ${e.message}")
         } catch (e: Exception) {
             Log.e(TAG, "Error handling client: ${e.message}", e)
         } finally {
+            watchdogJob.cancel()
             try { socket.close() } catch (_: Exception) {}
         }
     }
