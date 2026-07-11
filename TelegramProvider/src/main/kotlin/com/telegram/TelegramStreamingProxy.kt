@@ -198,6 +198,11 @@ object TelegramStreamingProxy {
         }
         lastStreamedFileId = fileId
 
+        // Force cancel any active download for this file to ensure TDLib instantly respects our new offset priority
+        runCatching {
+            TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+        }
+
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
 
         // Get file info
