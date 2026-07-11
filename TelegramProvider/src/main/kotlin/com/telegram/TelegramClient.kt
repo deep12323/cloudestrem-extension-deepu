@@ -288,8 +288,8 @@ object TelegramClient {
         val dbDir = File(context.applicationContext.filesDir, "tdlib").absolutePath
         val filesDir = File(context.applicationContext.filesDir, "tdlib_files").absolutePath
         client?.send(TdApi.SetTdlibParameters().also { p ->
-            p.apiId = TelegramConfig.API_ID
-            p.apiHash = TelegramConfig.API_HASH
+            p.apiId = TelegramRepository.getApiId(context)
+            p.apiHash = TelegramRepository.getApiHash(context)
             p.databaseDirectory = dbDir
             p.filesDirectory = filesDir
             p.databaseEncryptionKey = ByteArray(0)

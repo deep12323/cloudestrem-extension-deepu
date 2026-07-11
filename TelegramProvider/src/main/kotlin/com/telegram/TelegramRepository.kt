@@ -254,6 +254,26 @@ object TelegramRepository {
         prefs.edit().putLong("buffer_size_mb", limit).apply()
     }
 
+    fun getApiId(context: Context): Int {
+        val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
+        return prefs.getInt("api_id", 0) // Default 0 means unset
+    }
+
+    fun saveApiId(context: Context, apiId: Int) {
+        val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putInt("api_id", apiId).apply()
+    }
+
+    fun getApiHash(context: Context): String {
+        val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("api_hash", "") ?: ""
+    }
+
+    fun saveApiHash(context: Context, apiHash: String) {
+        val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("api_hash", apiHash).apply()
+    }
+
     suspend fun searchVideoMessages(
         query: String,
         limit: Int = 50

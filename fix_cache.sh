@@ -1,0 +1,2 @@
+#!/bin/bash
+sed -i 's/req.fileTypes = emptyArray()/req.fileTypes = arrayOf(TdApi.FileTypeAnimation(), TdApi.FileTypeAudio(), TdApi.FileTypeDocument(), TdApi.FileTypeNone(), TdApi.FileTypePhoto(), TdApi.FileTypeProfilePhoto(), TdApi.FileTypeSecret(), TdApi.FileTypeSecretThumbnail(), TdApi.FileTypeSecure(), TdApi.FileTypeSticker(), TdApi.FileTypeThumbnail(), TdApi.FileTypeUnknown(), TdApi.FileTypeVideo(), TdApi.FileTypeVideoNote(), TdApi.FileTypeVoiceNote(), TdApi.FileTypeWallpaper())/' TelegramProvider/src/main/kotlin/com/telegram/TelegramRepository.kt

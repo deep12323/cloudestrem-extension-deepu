@@ -82,17 +82,46 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
 
         when (state) {
             is TelegramAuthState.Idle -> {
-                val tv = TextView(context).apply {
-                    text = "You are not connected to Telegram. Click below to start authentication."
+                val tutorialText = TextView(context).apply {
+                    text = "To use this plugin securely, you must provide your own Telegram API ID and API Hash.\n1. Go to my.telegram.org and log in.\n2. Click 'API development tools'.\n3. Create an application to get your api_id and api_hash."
                     setTextColor(Color.LTGRAY)
+                    textSize = 12f
+                }
+                val currentApiId = TelegramRepository.getApiId(context)
+                val currentApiHash = TelegramRepository.getApiHash(context)
+
+                val apiIdInput = EditText(context).apply {
+                    inputType = InputType.TYPE_CLASS_NUMBER
+                    hint = "API ID (e.g. 1234567)"
+                    if (currentApiId != 0) setText(currentApiId.toString())
+                    setTextColor(Color.WHITE)
+                    setHintTextColor(Color.GRAY)
+                }
+                val apiHashInput = EditText(context).apply {
+                    inputType = InputType.TYPE_CLASS_TEXT
+                    hint = "API Hash (e.g. 0123456789abcdef)"
+                    setText(currentApiHash)
+                    setTextColor(Color.WHITE)
+                    setHintTextColor(Color.GRAY)
                 }
                 val btn = Button(context).apply {
-                    text = "Login with Telegram"
+                    text = "Save and Login"
                     setOnClickListener {
-                        TelegramRepository.startAuth(context)
+                        val idStr = apiIdInput.text.toString().trim()
+                        val hash = apiHashInput.text.toString().trim()
+                        val id = idStr.toIntOrNull()
+                        if (id == null || id <= 0 || hash.isBlank()) {
+                            Toast.makeText(context, "Please enter a valid API ID and Hash", Toast.LENGTH_SHORT).show()
+                        } else {
+                            TelegramRepository.saveApiId(context, id)
+                            TelegramRepository.saveApiHash(context, hash)
+                            TelegramRepository.startAuth(context)
+                        }
                     }
                 }
-                formContainer.addView(tv, layoutParams)
+                formContainer.addView(tutorialText, layoutParams)
+                formContainer.addView(apiIdInput, layoutParams)
+                formContainer.addView(apiHashInput, layoutParams)
                 formContainer.addView(btn, layoutParams)
                 addDetailedLogView(context, layoutParams)
             }
