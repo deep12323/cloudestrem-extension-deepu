@@ -15,7 +15,7 @@ import kotlin.concurrent.thread
 
 object TelegramStreamingProxy {
     private const val TAG = "TelegramProxy"
-    private const val CHUNK_SIZE = 2 * 1024 * 1024       // 2 MB served per ExoPlayer request
+    private const val CHUNK_SIZE = 1024 * 1024       // 1 MB served per ExoPlayer request (TDLib max limit)
     var prefetchSizeMb = 20L                             // Prefetch window sent to TDLib (dynamically configured)
     private const val DOWNLOAD_TIMEOUT_MS = 30_000L
     private const val DOWNLOAD_PRIORITY = 32              // max TDLib priority
@@ -275,7 +275,7 @@ object TelegramStreamingProxy {
                     TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                         req.fileId = fileId
                         req.priority = DOWNLOAD_PRIORITY
-                        req.offset = offset
+                        req.offset = offset - (offset % (1024 * 1024))
                         req.limit = tdlibPrefetch
                         req.synchronous = false
                     })
