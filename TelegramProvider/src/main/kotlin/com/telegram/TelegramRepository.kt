@@ -387,23 +387,38 @@ object TelegramRepository {
         var fetchMore = true
         var fetchCount = 0
 
-        while (results.isEmpty() && fetchMore && fetchCount < 10) { // Fetch up to 1000 messages to find videos
+        val topicFilter = TdApi.MessageTopicForum(topicId)
+
+        while (results.isEmpty() && fetchMore && fetchCount < 15) { // Fetch up to 1500 messages to find videos
             try {
-                val historyResult = TelegramClient.sendRequest(TdApi.GetForumTopicHistory(chatId, topicId, currentCursor, 0, 100))
-                val messages = (historyResult as? TdApi.Messages)?.messages ?: emptyArray()
-                
-                if (messages.isEmpty()) {
-                    fetchMore = false
-                    currentCursor = -1L
-                } else {
-                    for (msg in messages) {
+                val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                    req.chatId = chatId
+                    req.topicId = topicFilter
+                    req.query = ""
+                    req.senderId = null
+                    req.fromMessageId = currentCursor
+                    req.offset = 0
+                    req.limit = 100
+                    req.filter = null // No filter, fetch everything and parse manually
+                })
+
+                val found = (searchResult as? TdApi.FoundChatMessages)
+                if (found != null && found.messages.isNotEmpty()) {
+                    for (msg in found.messages) {
                         extractVideoMessage(msg, seen, results)
                     }
-                    currentCursor = messages.last().id
+                    currentCursor = found.nextFromMessageId
+                    if (currentCursor == 0L) {
+                        fetchMore = false
+                        currentCursor = -1L
+                    }
+                } else {
+                    fetchMore = false
+                    currentCursor = -1L
                 }
                 fetchCount++
             } catch (e: Exception) {
-                Log.e(TAG, "GetForumTopicHistory failed: ${e.message}")
+                Log.e(TAG, "SearchChatMessages fallback failed: ${e.message}")
                 fetchMore = false
                 currentCursor = -1L
             }
