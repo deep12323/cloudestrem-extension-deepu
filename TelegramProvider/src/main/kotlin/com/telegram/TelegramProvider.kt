@@ -55,7 +55,7 @@ class TelegramProvider : MainAPI() {
                 } else {
                     "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 }
-                newMovieSearchResponse(topicData.displayName, url, TvType.TvSeries) {
+                newTvSeriesSearchResponse(topicData.displayName, url, TvType.TvSeries) {
                     this.posterUrl = poster
                 }
             }
@@ -143,7 +143,7 @@ class TelegramProvider : MainAPI() {
         val uri = android.net.Uri.parse(url)
         
         // Handle forum topic URLs - show as TV Series with episodes
-        if (uri.host == "topic") {
+        if (url.startsWith("telegram://topic")) {
             val chatId = uri.getQueryParameter("chatId")?.toLongOrNull() ?: throw ErrorLoadingException("Missing chatId")
             val topicId = uri.getQueryParameter("topicId")?.toIntOrNull() ?: throw ErrorLoadingException("Missing topicId")
             val topicName = uri.getQueryParameter("name") ?: "Topic"
