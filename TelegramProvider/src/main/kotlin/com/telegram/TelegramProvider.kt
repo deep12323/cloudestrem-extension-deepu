@@ -49,7 +49,7 @@ class TelegramProvider : MainAPI() {
             if (topics.isEmpty()) return null
 
             val searchResponses = topics.map { topicData ->
-                val url = "telegram://topic?chatId=${chatId}&topicId=${topicData.topicId}&v=2&name=${java.net.URLEncoder.encode(topicData.displayName, "UTF-8")}&channelTitle=${java.net.URLEncoder.encode(topicData.channelTitle, "UTF-8")}"
+                val url = "${mainUrl}?tgType=topic&chatId=${chatId}&topicId=${topicData.topicId}&v=2&name=${java.net.URLEncoder.encode(topicData.displayName, "UTF-8")}&channelTitle=${java.net.URLEncoder.encode(topicData.channelTitle, "UTF-8")}"
                 val poster = if (topicData.thumbnailChatId != 0L && topicData.thumbnailMessageId != 0L) {
                     TelegramRepository.getThumbnailUrl(topicData.thumbnailChatId, topicData.thumbnailMessageId)
                 } else {
@@ -101,7 +101,7 @@ class TelegramProvider : MainAPI() {
             val size = msg.fileSize
             val name = msg.fileName
             val thumbId = msg.thumbnailFileId?.toString() ?: ""
-            val url = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+            val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
             
             val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
             
@@ -129,7 +129,7 @@ class TelegramProvider : MainAPI() {
                 val size = msg.fileSize
                 val name = msg.fileName
                 val thumbId = msg.thumbnailFileId?.toString() ?: ""
-                val url = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+                val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
                 
                 val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 
@@ -143,7 +143,8 @@ class TelegramProvider : MainAPI() {
         val uri = android.net.Uri.parse(url)
         
         // Handle forum topic URLs - show as TV Series with episodes
-        if (url.startsWith("telegram://topic")) {
+        val tgType = uri.getQueryParameter("tgType")
+        if (tgType == "topic") {
             val chatId = uri.getQueryParameter("chatId")?.toLongOrNull() ?: throw ErrorLoadingException("Missing chatId")
             val topicId = uri.getQueryParameter("topicId")?.toIntOrNull() ?: throw ErrorLoadingException("Missing topicId")
             val topicName = uri.getQueryParameter("name") ?: "Topic"
@@ -164,7 +165,7 @@ class TelegramProvider : MainAPI() {
                 val size = msg.fileSize
                 val name = msg.fileName
                 val thumbId = msg.thumbnailFileId?.toString() ?: ""
-                val episodeUrl = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+                val episodeUrl = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
                 val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
 
                 newEpisode(episodeUrl) {

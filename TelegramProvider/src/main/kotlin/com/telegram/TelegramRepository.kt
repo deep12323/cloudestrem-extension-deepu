@@ -376,55 +376,88 @@ object TelegramRepository {
 
         val prefs = getContext().getSharedPreferences("telegram_pagination", android.content.Context.MODE_PRIVATE)
         if (page == 1) {
+            // Clear old cursors for this topic
             prefs.edit().apply {
                 prefs.all.keys.filter { it.startsWith("${chatId}_topic${topicId}_") }.forEach { remove(it) }
             }.apply()
         }
 
-        var currentCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_page_$page", 0L)
-        if (currentCursor == -1L && page > 1) return results // Reached end of history
+        var currentDocCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_doc_page_$page", 0L)
+        var currentVidCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_vid_page_$page", 0L)
 
-        var fetchMore = true
-        var fetchCount = 0
+        var fetchDoc = currentDocCursor != -1L
+        var fetchVid = currentVidCursor != -1L
+
+        if (!fetchDoc && !fetchVid && page > 1) return results // Reached end of history for both filters
 
         val topicFilter = TdApi.MessageTopicForum(topicId)
 
-        while (results.isEmpty() && fetchMore && fetchCount < 15) { // Fetch up to 1500 messages to find videos
-            try {
-                val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
-                    req.chatId = chatId
-                    req.topicId = topicFilter
-                    req.query = ""
-                    req.senderId = null
-                    req.fromMessageId = currentCursor
-                    req.offset = 0
-                    req.limit = 100
-                    req.filter = null // No filter, fetch everything and parse manually
-                })
+        // Use dedicated Video and Document filters so TDLib only returns matching messages
+        while (results.isEmpty() && (fetchDoc || fetchVid)) {
+            if (fetchDoc) {
+                try {
+                    val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.topicId = topicFilter
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = currentDocCursor
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = TdApi.SearchMessagesFilterDocument()
+                    })
 
-                val found = (searchResult as? TdApi.FoundChatMessages)
-                if (found != null && found.messages.isNotEmpty()) {
-                    for (msg in found.messages) {
-                        extractVideoMessage(msg, seen, results)
+                    val found = (searchResult as? TdApi.FoundChatMessages)
+                    if (found != null) {
+                        currentDocCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
+                        fetchDoc = currentDocCursor != -1L
+                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                    } else {
+                        fetchDoc = false
+                        currentDocCursor = -1L
                     }
-                    currentCursor = found.nextFromMessageId
-                    if (currentCursor == 0L) {
-                        fetchMore = false
-                        currentCursor = -1L
-                    }
-                } else {
-                    fetchMore = false
-                    currentCursor = -1L
+                } catch (e: Exception) {
+                    Log.e(TAG, "SearchChatMessages doc filter failed for topic $topicId: ${e.message}")
+                    fetchDoc = false
+                    currentDocCursor = -1L
                 }
-                fetchCount++
-            } catch (e: Exception) {
-                Log.e(TAG, "SearchChatMessages fallback failed: ${e.message}")
-                fetchMore = false
-                currentCursor = -1L
+            }
+
+            if (fetchVid) {
+                try {
+                    val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.topicId = topicFilter
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = currentVidCursor
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = TdApi.SearchMessagesFilterVideo()
+                    })
+
+                    val found = (searchResult as? TdApi.FoundChatMessages)
+                    if (found != null) {
+                        currentVidCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
+                        fetchVid = currentVidCursor != -1L
+                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                    } else {
+                        fetchVid = false
+                        currentVidCursor = -1L
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "SearchChatMessages vid filter failed for topic $topicId: ${e.message}")
+                    fetchVid = false
+                    currentVidCursor = -1L
+                }
             }
         }
 
-        prefs.edit().putLong("${chatId}_topic${topicId}_page_${page + 1}", currentCursor).apply()
+        // Save cursors for next page
+        prefs.edit()
+            .putLong("${chatId}_topic${topicId}_doc_page_${page + 1}", currentDocCursor)
+            .putLong("${chatId}_topic${topicId}_vid_page_${page + 1}", currentVidCursor)
+            .apply()
 
         results.sortByDescending { it.messageId }
         return results
