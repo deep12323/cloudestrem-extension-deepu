@@ -269,6 +269,13 @@ object TelegramStreamingProxy {
             val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
 
             if (offset >= activeDownloadEnd) {
+                // Cancel previous download range before starting a new one.
+                // Without this, TDLib accumulates successive DownloadFile ranges
+                // and downloads far beyond the configured buffer size.
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                }
+
                 val tdlibPrefetch = when {
                     prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
                     prefetchSizeMb <= 0L -> chunkSize.toLong()

@@ -9,7 +9,7 @@ dependencies {
 }
 
 // Use an integer for version numbers
-version = 79
+version = 80
 
 cloudstream {
     // All of these properties are optional, you can safely remove any of them.
