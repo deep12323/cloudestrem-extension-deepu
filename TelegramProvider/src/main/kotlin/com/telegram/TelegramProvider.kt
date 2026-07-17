@@ -49,7 +49,7 @@ class TelegramProvider : MainAPI() {
             if (topics.isEmpty()) return null
 
             val searchResponses = topics.map { topicData ->
-                val url = "telegram://topic?chatId=${chatId}&topicId=${topicData.topicId}&name=${java.net.URLEncoder.encode(topicData.displayName, "UTF-8")}&channelTitle=${java.net.URLEncoder.encode(topicData.channelTitle, "UTF-8")}"
+                val url = "telegram://topic?chatId=${chatId}&topicId=${topicData.topicId}&v=2&name=${java.net.URLEncoder.encode(topicData.displayName, "UTF-8")}&channelTitle=${java.net.URLEncoder.encode(topicData.channelTitle, "UTF-8")}"
                 val poster = if (topicData.thumbnailChatId != 0L && topicData.thumbnailMessageId != 0L) {
                     TelegramRepository.getThumbnailUrl(topicData.thumbnailChatId, topicData.thumbnailMessageId)
                 } else {

@@ -381,84 +381,35 @@ object TelegramRepository {
             }.apply()
         }
 
-        var currentDocCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_doc_page_$page", 0L)
-        var currentVidCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_vid_page_$page", 0L)
+        var currentCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_page_$page", 0L)
+        if (currentCursor == -1L && page > 1) return results // Reached end of history
 
-        var fetchDoc = currentDocCursor != -1L
-        var fetchVid = currentVidCursor != -1L
+        var fetchMore = true
+        var fetchCount = 0
 
-        val topicFilter = TdApi.MessageTopicForum(topicId)
-
-        while (results.isEmpty() && (fetchDoc || fetchVid)) {
-            if (fetchDoc) {
-                try {
-                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
-                        req.chatId = chatId
-                        req.topicId = topicFilter
-                        req.query = ""
-                        req.senderId = null
-                        req.fromMessageId = currentDocCursor
-                        req.offset = 0
-                        req.limit = limit
-                        req.filter = TdApi.SearchMessagesFilterDocument()
-                    })
-
-                    val found = (historyResult as? TdApi.FoundChatMessages)
-                    if (found != null) {
-                        currentDocCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
-                        prefs.edit().putLong("${chatId}_topic${topicId}_doc_page_${page + 1}", currentDocCursor).apply()
-                        fetchDoc = currentDocCursor != -1L
-                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
-                    } else {
-                        fetchDoc = false
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Search topic document messages failed: ${e.message}")
-                    fetchDoc = false
-                }
-            }
-
-            if (fetchVid) {
-                try {
-                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
-                        req.chatId = chatId
-                        req.topicId = topicFilter
-                        req.query = ""
-                        req.senderId = null
-                        req.fromMessageId = currentVidCursor
-                        req.offset = 0
-                        req.limit = limit
-                        req.filter = TdApi.SearchMessagesFilterVideo()
-                    })
-
-                    val found = (historyResult as? TdApi.FoundChatMessages)
-                    if (found != null) {
-                        currentVidCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
-                        prefs.edit().putLong("${chatId}_topic${topicId}_vid_page_${page + 1}", currentVidCursor).apply()
-                        fetchVid = currentVidCursor != -1L
-                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
-                    } else {
-                        fetchVid = false
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Search topic video messages failed: ${e.message}")
-                    fetchVid = false
-                }
-            }
-        }
-
-        // Fallback: If SearchChatMessages didn't find anything (maybe DB issues), try GetForumTopicHistory
-        if (results.isEmpty() && page == 1) {
+        while (results.isEmpty() && fetchMore && fetchCount < 10) { // Fetch up to 1000 messages to find videos
             try {
-                val historyResult = TelegramClient.sendRequest(TdApi.GetForumTopicHistory(chatId, topicId, 0L, 0, 100))
+                val historyResult = TelegramClient.sendRequest(TdApi.GetForumTopicHistory(chatId, topicId, currentCursor, 0, 100))
                 val messages = (historyResult as? TdApi.Messages)?.messages ?: emptyArray()
-                for (msg in messages) {
-                    extractVideoMessage(msg, seen, results)
+                
+                if (messages.isEmpty()) {
+                    fetchMore = false
+                    currentCursor = -1L
+                } else {
+                    for (msg in messages) {
+                        extractVideoMessage(msg, seen, results)
+                    }
+                    currentCursor = messages.last().id
                 }
+                fetchCount++
             } catch (e: Exception) {
-                Log.e(TAG, "GetForumTopicHistory fallback failed: ${e.message}")
+                Log.e(TAG, "GetForumTopicHistory failed: ${e.message}")
+                fetchMore = false
+                currentCursor = -1L
             }
         }
+
+        prefs.edit().putLong("${chatId}_topic${topicId}_page_${page + 1}", currentCursor).apply()
 
         results.sortByDescending { it.messageId }
         return results
