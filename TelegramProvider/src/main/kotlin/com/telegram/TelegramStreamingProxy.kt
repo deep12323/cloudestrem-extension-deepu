@@ -64,28 +64,12 @@ object TelegramStreamingProxy {
 
     private suspend fun handleClient(socket: Socket) {
         val clientJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
-        val watchdogJob = CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val stream = socket.getInputStream()
-                val buffer = ByteArray(1)
-                while (clientJob?.isActive == true) {
-                    try {
-                        val res = stream.read(buffer)
-                        if (res == -1) break
-                    } catch (e: java.net.SocketTimeoutException) {
-                        continue
-                    } catch (e: Exception) {
-                        break
-                    }
-                }
-            } finally {
-                clientJob?.cancel()
-            }
-        }
+        var watchdogJob: kotlinx.coroutines.Job? = null
 
         try {
             socket.soTimeout = 30000
-            val reader = socket.getInputStream().bufferedReader()
+            val inputStream = socket.getInputStream()
+            val reader = inputStream.bufferedReader()
             val reqLine = reader.readLine() ?: return
             val parts = reqLine.split(" ")
             if (parts.size < 2) return
@@ -142,6 +126,25 @@ object TelegramStreamingProxy {
                 }
             }
 
+            // Start watchdog AFTER headers are fully parsed to avoid InputStream race.
+            // ExoPlayer sends no more data after headers, so read() returning -1 means disconnect.
+            watchdogJob = CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    while (clientJob?.isActive == true) {
+                        try {
+                            val res = reader.read()
+                            if (res == -1) break
+                        } catch (e: java.net.SocketTimeoutException) {
+                            continue
+                        } catch (e: Exception) {
+                            break
+                        }
+                    }
+                } finally {
+                    clientJob?.cancel()
+                }
+            }
+
             // Stream file or serve thumbnail
             if (isThumbnail) {
                 serveThumbnail(fileId, output)
@@ -171,7 +174,7 @@ object TelegramStreamingProxy {
                         }
                         
                         scope.launch {
-                            delay(5000)
+                            delay(30_000)
                             if ((activeStreams[fileId] ?: 0) <= 0) {
                                 deleteFile(fileId)
                             }
@@ -186,14 +189,14 @@ object TelegramStreamingProxy {
         } catch (e: Exception) {
             Log.e(TAG, "Error handling client: ${e.message}", e)
         } finally {
-            watchdogJob.cancel()
+            watchdogJob?.cancel()
             try { socket.close() } catch (_: Exception) {}
         }
     }
 
     private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long) {
         val prev = lastStreamedFileId
-        if (prev != null && prev != fileId) {
+        if (prev != null && prev != fileId && (activeStreams[prev] ?: 0) <= 0) {
             scope.launch { deleteFile(prev) }
         }
         lastStreamedFileId = fileId

@@ -167,7 +167,9 @@ class TeleflixProvider : MainAPI() {
         }
 
         results.forEach { msg ->
-            val streamUrl = TelegramRepository.getStreamUrl(msg.fileId, msg.fileName)
+            // Use fresh fileId to avoid stale IDs after TDLib session restarts
+            val freshFileId = TelegramRepository.getFreshFileId(msg.chatId, msg.messageId) ?: msg.fileId
+            val streamUrl = TelegramRepository.getStreamUrl(freshFileId, msg.fileName, msg.fileSize)
             val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
             
             callback.invoke(
