@@ -102,6 +102,7 @@ object TelegramStreamingProxy {
                                 when (val content = msg.content) {
                                     is TdApi.MessageVideo -> fileId = content.video.thumbnail?.file?.id
                                     is TdApi.MessageDocument -> fileId = content.document.thumbnail?.file?.id
+                                    is TdApi.MessageAudio -> fileId = content.audio.albumCoverThumbnail?.file?.id
                                 }
                             }
                         } catch (e: Exception) {}
@@ -245,6 +246,14 @@ object TelegramStreamingProxy {
             "flv" -> "video/x-flv"
             "wmv" -> "video/x-ms-wmv"
             "ts", "m2ts" -> "video/mp2t"
+            "mp3" -> "audio/mpeg"
+            "flac" -> "audio/flac"
+            "aac" -> "audio/aac"
+            "ogg", "opus" -> "audio/ogg"
+            "wav" -> "audio/wav"
+            "wma" -> "audio/x-ms-wma"
+            "m4a" -> "audio/mp4"
+            "aiff" -> "audio/aiff"
             else -> "video/mp4"
         }
 
