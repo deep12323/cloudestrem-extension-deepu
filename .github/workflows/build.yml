@@ -43,11 +43,11 @@ jobs:
               "name": "Telegram",
               "internalName": "TelegramProvider",
               "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TelegramProvider.cs3?v=2",
-              "tvTypes": ["Movie"],
+              "tvTypes": ["Movie", "TvSeries"],
               "language": "en",
               "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg",
               "apiVersion": 10,
-              "version": 80,
+              "version": 81,
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Stream any media from your Telegram chats and channels on-demand"
