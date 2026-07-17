@@ -394,18 +394,21 @@ object TelegramClient {
                     
                     // Force TDLib to load chats from server into local cache
                     // This ensures raw -100 IDs can be resolved properly.
-                    try {
-                        var loaded = false
-                        var attempt = 0
-                        while (!loaded && attempt < 5) {
-                            try {
-                                sendRequest(TdApi.LoadChats(TdApi.ChatListMain(), 100))
-                                attempt++
-                            } catch (e: Exception) {
-                                loaded = true // usually 404 Not Found when all chats are loaded
+                    // Load both Main and Archive chat lists so archived channels work as catalogue.
+                    for (chatList in listOf(TdApi.ChatListMain(), TdApi.ChatListArchive())) {
+                        try {
+                            var loaded = false
+                            var attempt = 0
+                            while (!loaded && attempt < 5) {
+                                try {
+                                    sendRequest(TdApi.LoadChats(chatList, 100))
+                                    attempt++
+                                } catch (e: Exception) {
+                                    loaded = true // usually 404 Not Found when all chats are loaded
+                                }
                             }
-                        }
-                    } catch (e: Exception) {}
+                        } catch (e: Exception) {}
+                    }
 
                     File(context.filesDir, "tdlib_session_ok").createNewFile()
                     _authState.value = TelegramAuthState.Ready(

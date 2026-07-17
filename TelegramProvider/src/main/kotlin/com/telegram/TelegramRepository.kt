@@ -18,6 +18,14 @@ data class TelegramVideoMessage(
     val thumbnailFileId: Int? = null
 )
 
+data class ForumTopicData(
+    val topicId: Int,
+    val displayName: String,
+    val channelTitle: String,
+    val thumbnailChatId: Long = 0L,
+    val thumbnailMessageId: Long = 0L
+)
+
 object TelegramRepository {
     private const val TAG = "TelegramRepository"
 
@@ -110,16 +118,48 @@ object TelegramRepository {
         val clean = identifier.trim()
         if (clean.isEmpty()) return null
 
-        clean.toLongOrNull()?.let { return it }
+        clean.toLongOrNull()?.let { numericId ->
+            // For raw numeric IDs, ensure TDLib has the chat loaded in its local cache.
+            // Without this, archived or unloaded chats will fail on SearchChatMessages.
+            try {
+                TelegramClient.sendRequest(TdApi.GetChat(numericId))
+            } catch (e: Exception) {
+                Log.w(TAG, "GetChat failed for $numericId, trying to open: ${e.message}")
+                // Try loading archive chats in case they haven't been loaded yet
+                try {
+                    TelegramClient.sendRequest(TdApi.LoadChats(TdApi.ChatListArchive(), 100))
+                } catch (_: Exception) {}
+                // Retry after loading
+                try {
+                    TelegramClient.sendRequest(TdApi.GetChat(numericId))
+                } catch (e2: Exception) {
+                    Log.e(TAG, "GetChat still failed for $numericId after loading archive: ${e2.message}")
+                }
+            }
+            return numericId
+        }
 
         val username = clean.removePrefix("@")
-        return try {
+        // Try public search first (works for public channels)
+        try {
             val chat = TelegramClient.sendRequest(TdApi.SearchPublicChat(username)) as? TdApi.Chat
-            chat?.id
+            if (chat != null) return chat.id
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to resolve username $username: ${e.message}")
-            null
+            Log.w(TAG, "SearchPublicChat failed for $username: ${e.message}")
         }
+
+        // Fallback: search among all chats the user has joined (works for private/archive channels)
+        try {
+            val chats = TelegramClient.sendRequest(TdApi.SearchChatsOnServer(username, 5)) as? TdApi.Chats
+            if (chats != null && chats.chatIds.isNotEmpty()) {
+                return chats.chatIds.first()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "SearchChatsOnServer failed for $username: ${e.message}")
+        }
+
+        Log.e(TAG, "Could not resolve channel: $identifier")
+        return null
     }
 
     suspend fun getChannelVideos(identifier: String, page: Int, limit: Int = 50): Pair<String, List<TelegramVideoMessage>>? {
@@ -215,6 +255,200 @@ object TelegramRepository {
         results.sortByDescending { it.messageId }
 
         return title to results
+    }
+
+    suspend fun isForumChannel(chatId: Long): Boolean {
+        return try {
+            val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat ?: return false
+            val supergroupType = chat.type as? TdApi.ChatTypeSupergroup ?: return false
+            val supergroup = TelegramClient.sendRequest(TdApi.GetSupergroup(supergroupType.supergroupId)) as? TdApi.Supergroup
+            supergroup?.isForum == true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to check if forum: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun getForumTopics(chatId: Long): List<ForumTopicData> {
+        val results = mutableListOf<ForumTopicData>()
+        var channelTitle = ""
+        try {
+            val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
+            if (chat != null) channelTitle = chat.title
+        } catch (e: Exception) {}
+
+        try {
+            var offsetDate = 0
+            var offsetMessageId = 0L
+            var offsetTopicId = 0
+            var hasMore = true
+
+            while (hasMore) {
+                val topicsResult = TelegramClient.sendRequest(TdApi.GetForumTopics(
+                    chatId, "", offsetDate, offsetMessageId, offsetTopicId, 100
+                )) as? TdApi.ForumTopics ?: break
+
+                for (topic in topicsResult.topics) {
+                    val info = topic.info
+                    if (info.isHidden) continue
+
+                    val emoji = getTopicEmoji(info)
+                    val displayName = if (emoji.isNotEmpty()) "$emoji ${info.name}" else info.name
+                    results.add(ForumTopicData(
+                        topicId = info.forumTopicId,
+                        displayName = displayName,
+                        channelTitle = channelTitle
+                    ))
+                }
+
+                if (topicsResult.topics.size < 100 || topicsResult.nextOffsetDate == 0) {
+                    hasMore = false
+                } else {
+                    offsetDate = topicsResult.nextOffsetDate
+                    offsetMessageId = topicsResult.nextOffsetMessageId
+                    offsetTopicId = topicsResult.nextOffsetForumTopicId
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get forum topics: ${e.message}")
+        }
+
+        // Fetch thumbnail from first video in each topic
+        for (i in results.indices) {
+            val topicData = results[i]
+            try {
+                val topicFilter = TdApi.MessageTopicForum(topicData.topicId)
+                for (filter in listOf(TdApi.SearchMessagesFilterVideo(), TdApi.SearchMessagesFilterDocument())) {
+                    val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.topicId = topicFilter
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = 0
+                        req.offset = 0
+                        req.limit = 1
+                        req.filter = filter
+                    })
+                    val found = (searchResult as? TdApi.FoundChatMessages)
+                    if (found != null && found.messages.isNotEmpty()) {
+                        val msg = found.messages[0]
+                        results[i] = topicData.copy(
+                            thumbnailChatId = chatId,
+                            thumbnailMessageId = msg.id
+                        )
+                        break
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch thumbnail for topic ${topicData.topicId}: ${e.message}")
+            }
+        }
+
+        return results
+    }
+
+    private fun getTopicEmoji(info: TdApi.ForumTopicInfo): String {
+        if (info.isGeneral) return "📋"
+        val icon = info.icon ?: return ""
+        if (icon.customEmojiId != 0L) {
+            // We can't easily render custom emojis in text, use a colored circle as fallback
+            return getColorEmoji(icon.color)
+        }
+        return getColorEmoji(icon.color)
+    }
+
+    private fun getColorEmoji(color: Int): String {
+        // Map TDLib topic icon colors to circle emojis
+        return when (color) {
+            0x6FB9F0 -> "🔵"
+            0xFFD67E -> "🟡"
+            0xCB86DB -> "🟣"
+            0x8EEE98 -> "🟢"
+            0xFF93B2 -> "🩷"
+            0xFB6F5F -> "🔴"
+            else -> "📁"
+        }
+    }
+
+    suspend fun getTopicVideos(chatId: Long, topicId: Int, page: Int, limit: Int = 50): List<TelegramVideoMessage> {
+        val results = mutableListOf<TelegramVideoMessage>()
+        val seen = mutableSetOf<Pair<String, Long>>()
+
+        val prefs = getContext().getSharedPreferences("telegram_pagination", android.content.Context.MODE_PRIVATE)
+        if (page == 1) {
+            prefs.edit().apply {
+                prefs.all.keys.filter { it.startsWith("${chatId}_topic${topicId}_") }.forEach { remove(it) }
+            }.apply()
+        }
+
+        var currentDocCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_doc_page_$page", 0L)
+        var currentVidCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_vid_page_$page", 0L)
+
+        var fetchDoc = currentDocCursor != -1L
+        var fetchVid = currentVidCursor != -1L
+
+        val topicFilter = TdApi.MessageTopicForum(topicId)
+
+        while (results.isEmpty() && (fetchDoc || fetchVid)) {
+            if (fetchDoc) {
+                try {
+                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.topicId = topicFilter
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = currentDocCursor
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = TdApi.SearchMessagesFilterDocument()
+                    })
+
+                    val found = (historyResult as? TdApi.FoundChatMessages)
+                    if (found != null) {
+                        currentDocCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
+                        prefs.edit().putLong("${chatId}_topic${topicId}_doc_page_${page + 1}", currentDocCursor).apply()
+                        fetchDoc = currentDocCursor != -1L
+                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                    } else {
+                        fetchDoc = false
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Search topic document messages failed: ${e.message}")
+                    fetchDoc = false
+                }
+            }
+
+            if (fetchVid) {
+                try {
+                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.topicId = topicFilter
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = currentVidCursor
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = TdApi.SearchMessagesFilterVideo()
+                    })
+
+                    val found = (historyResult as? TdApi.FoundChatMessages)
+                    if (found != null) {
+                        currentVidCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
+                        prefs.edit().putLong("${chatId}_topic${topicId}_vid_page_${page + 1}", currentVidCursor).apply()
+                        fetchVid = currentVidCursor != -1L
+                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                    } else {
+                        fetchVid = false
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Search topic video messages failed: ${e.message}")
+                    fetchVid = false
+                }
+            }
+        }
+
+        results.sortByDescending { it.messageId }
+        return results
     }
 
     private var cachedCustomChannels: List<String> = emptyList()

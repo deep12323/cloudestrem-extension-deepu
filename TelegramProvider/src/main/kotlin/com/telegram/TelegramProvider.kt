@@ -13,7 +13,7 @@ import kotlinx.coroutines.coroutineScope
 class TelegramProvider : MainAPI() {
     override var mainUrl = "https://t.me"
     override var name = "Telegram"
-    override val supportedTypes = setOf(TvType.Movie)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override var lang = "en"
     override val hasMainPage = true
@@ -40,6 +40,47 @@ class TelegramProvider : MainAPI() {
         }
 
         val chanId = request.data
+        val chatId = TelegramRepository.getChatId(chanId) ?: return null
+
+        // Check if this is a forum channel with topics
+        if (page == 1 && TelegramRepository.isForumChannel(chatId)) {
+            // Forum channel: show topics as series cards
+            val topics = TelegramRepository.getForumTopics(chatId)
+            if (topics.isEmpty()) return null
+
+            val searchResponses = topics.map { topicData ->
+                val url = "telegram://topic?chatId=${chatId}&topicId=${topicData.topicId}&name=${java.net.URLEncoder.encode(topicData.displayName, "UTF-8")}&channelTitle=${java.net.URLEncoder.encode(topicData.channelTitle, "UTF-8")}"
+                val poster = if (topicData.thumbnailChatId != 0L && topicData.thumbnailMessageId != 0L) {
+                    TelegramRepository.getThumbnailUrl(topicData.thumbnailChatId, topicData.thumbnailMessageId)
+                } else {
+                    "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                }
+                newMovieSearchResponse(topicData.displayName, url, TvType.TvSeries) {
+                    this.posterUrl = poster
+                }
+            }
+
+            // Cache the channel title
+            try {
+                val context = TelegramRepository.getContext()
+                val title = topics.firstOrNull()?.channelTitle ?: chanId
+                context.getSharedPreferences("telegram_plugin_prefs", android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("title_$chanId", title)
+                    .apply()
+            } catch (e: Exception) {}
+
+            return try {
+                newHomePageResponse(
+                    HomePageList(request.name, searchResponses, true),
+                    false
+                )
+            } catch (e: Throwable) {
+                newHomePageResponse(request.name, searchResponses, false)
+            }
+        }
+
+        // Non-forum channel: original behavior - show videos directly
         val result = TelegramRepository.getChannelVideos(chanId, page = page, limit = 50) ?: return null
         
         val title = result.first
@@ -60,7 +101,6 @@ class TelegramProvider : MainAPI() {
             val size = msg.fileSize
             val name = msg.fileName
             val thumbId = msg.thumbnailFileId?.toString() ?: ""
-            // Remove fileId from URL to ensure watch history stability, as fileId changes across TDLib sessions.
             val url = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
             
             val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
@@ -77,7 +117,6 @@ class TelegramProvider : MainAPI() {
                 hasNext
             )
         } catch (e: Throwable) {
-            // Fallback for older Cloudstream versions that don't support horizontal images
             newHomePageResponse(request.name, searchResponses, hasNext)
         }
     }
@@ -102,6 +141,54 @@ class TelegramProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val uri = android.net.Uri.parse(url)
+        
+        // Handle forum topic URLs - show as TV Series with episodes
+        if (uri.host == "topic") {
+            val chatId = uri.getQueryParameter("chatId")?.toLongOrNull() ?: throw ErrorLoadingException("Missing chatId")
+            val topicId = uri.getQueryParameter("topicId")?.toIntOrNull() ?: throw ErrorLoadingException("Missing topicId")
+            val topicName = uri.getQueryParameter("name") ?: "Topic"
+            val channelTitle = uri.getQueryParameter("channelTitle") ?: ""
+
+            // Fetch all videos in this topic (paginate until exhausted)
+            val allVideos = mutableListOf<TelegramVideoMessage>()
+            var currentPage = 1
+            while (true) {
+                val pageVideos = TelegramRepository.getTopicVideos(chatId, topicId, page = currentPage, limit = 50)
+                if (pageVideos.isEmpty()) break
+                allVideos.addAll(pageVideos)
+                currentPage++
+            }
+            val videos = allVideos
+
+            val episodes = videos.mapIndexed { index, msg ->
+                val size = msg.fileSize
+                val name = msg.fileName
+                val thumbId = msg.thumbnailFileId?.toString() ?: ""
+                val episodeUrl = "telegram://message?chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+                val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+
+                newEpisode(episodeUrl) {
+                    this.name = name
+                    this.data = episodeUrl
+                    this.season = 1
+                    this.episode = index + 1
+                    this.posterUrl = poster
+                }
+            }
+
+            return newTvSeriesLoadResponse(topicName, url, TvType.TvSeries, episodes) {
+                this.plot = "$channelTitle • ${videos.size} video${if (videos.size != 1) "s" else ""}"
+                this.posterUrl = if (videos.isNotEmpty()) {
+                    val firstMsg = videos.first()
+                    firstMsg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId) }
+                        ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                } else {
+                    "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                }
+            }
+        }
+
+        // Handle regular video URLs - show as Movie (original behavior)
         val size = uri.getQueryParameter("size")?.toLongOrNull() ?: 0L
         val name = uri.getQueryParameter("name") ?: "Telegram File"
         val chatId = uri.getQueryParameter("chatId")?.toLongOrNull() ?: 0L
