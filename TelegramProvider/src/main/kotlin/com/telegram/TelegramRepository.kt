@@ -186,14 +186,16 @@ object TelegramRepository {
 
         var currentDocCursor = if (page == 1) 0L else prefs.getLong("${chatId}_doc_page_$page", 0L)
         var currentVidCursor = if (page == 1) 0L else prefs.getLong("${chatId}_vid_page_$page", 0L)
+        var currentAudCursor = if (page == 1) 0L else prefs.getLong("${chatId}_aud_page_$page", 0L)
 
         // Only fetch if cursor is not -1 (which we'll use to indicate end of stream)
         var fetchDoc = currentDocCursor != -1L
         var fetchVid = currentVidCursor != -1L
+        var fetchAud = currentAudCursor != -1L
 
         // Loop until we find at least one valid video/document or reach the end of history.
         // This prevents pagination from breaking if a chunk of 50 messages contains only non-video documents (e.g. PDFs/SRTs).
-        while (results.isEmpty() && (fetchDoc || fetchVid)) {
+        while (results.isEmpty() && (fetchDoc || fetchVid || fetchAud)) {
             if (fetchDoc) {
                 try {
                     val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
@@ -212,7 +214,7 @@ object TelegramRepository {
                         currentDocCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
                         prefs.edit().putLong("${chatId}_doc_page_${page + 1}", currentDocCursor).apply()
                         fetchDoc = currentDocCursor != -1L
-                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                        for (msg in found.messages) extractMediaMessage(msg, seen, results)
                     } else {
                         fetchDoc = false
                     }
@@ -240,13 +242,41 @@ object TelegramRepository {
                         currentVidCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
                         prefs.edit().putLong("${chatId}_vid_page_${page + 1}", currentVidCursor).apply()
                         fetchVid = currentVidCursor != -1L
-                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                        for (msg in found.messages) extractMediaMessage(msg, seen, results)
                     } else {
                         fetchVid = false
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Search video messages failed: ${e.message}")
                     fetchVid = false
+                }
+            }
+
+            if (fetchAud) {
+                try {
+                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = currentAudCursor
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = TdApi.SearchMessagesFilterAudio()
+                        req.topicId = null
+                    })
+                    
+                    val found = (historyResult as? TdApi.FoundChatMessages)
+                    if (found != null) {
+                        currentAudCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
+                        prefs.edit().putLong("${chatId}_aud_page_${page + 1}", currentAudCursor).apply()
+                        fetchAud = currentAudCursor != -1L
+                        for (msg in found.messages) extractMediaMessage(msg, seen, results)
+                    } else {
+                        fetchAud = false
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Search audio messages failed: ${e.message}")
+                    fetchAud = false
                 }
             }
         }
@@ -318,7 +348,7 @@ object TelegramRepository {
             val topicData = results[i]
             try {
                 val topicFilter = TdApi.MessageTopicForum(topicData.topicId)
-                for (filter in listOf(TdApi.SearchMessagesFilterVideo(), TdApi.SearchMessagesFilterDocument())) {
+                for (filter in listOf(TdApi.SearchMessagesFilterVideo(), TdApi.SearchMessagesFilterDocument(), TdApi.SearchMessagesFilterAudio())) {
                     val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
                         req.chatId = chatId
                         req.topicId = topicFilter
@@ -384,16 +414,18 @@ object TelegramRepository {
 
         var currentDocCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_doc_page_$page", 0L)
         var currentVidCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_vid_page_$page", 0L)
+        var currentAudCursor = if (page == 1) 0L else prefs.getLong("${chatId}_topic${topicId}_aud_page_$page", 0L)
 
         var fetchDoc = currentDocCursor != -1L
         var fetchVid = currentVidCursor != -1L
+        var fetchAud = currentAudCursor != -1L
 
-        if (!fetchDoc && !fetchVid && page > 1) return results // Reached end of history for both filters
+        if (!fetchDoc && !fetchVid && !fetchAud && page > 1) return results // Reached end of history for all filters
 
         val topicFilter = TdApi.MessageTopicForum(topicId)
 
         // Use dedicated Video and Document filters so TDLib only returns matching messages
-        while (results.isEmpty() && (fetchDoc || fetchVid)) {
+        while (results.isEmpty() && (fetchDoc || fetchVid || fetchAud)) {
             if (fetchDoc) {
                 try {
                     val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
@@ -411,7 +443,7 @@ object TelegramRepository {
                     if (found != null) {
                         currentDocCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
                         fetchDoc = currentDocCursor != -1L
-                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                        for (msg in found.messages) extractMediaMessage(msg, seen, results)
                     } else {
                         fetchDoc = false
                         currentDocCursor = -1L
@@ -440,7 +472,7 @@ object TelegramRepository {
                     if (found != null) {
                         currentVidCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
                         fetchVid = currentVidCursor != -1L
-                        for (msg in found.messages) extractVideoMessage(msg, seen, results)
+                        for (msg in found.messages) extractMediaMessage(msg, seen, results)
                     } else {
                         fetchVid = false
                         currentVidCursor = -1L
@@ -451,12 +483,41 @@ object TelegramRepository {
                     currentVidCursor = -1L
                 }
             }
+            if (fetchAud) {
+                try {
+                    val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.topicId = topicFilter
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = currentAudCursor
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = TdApi.SearchMessagesFilterAudio()
+                    })
+
+                    val found = (searchResult as? TdApi.FoundChatMessages)
+                    if (found != null) {
+                        currentAudCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
+                        fetchAud = currentAudCursor != -1L
+                        for (msg in found.messages) extractMediaMessage(msg, seen, results)
+                    } else {
+                        fetchAud = false
+                        currentAudCursor = -1L
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "SearchChatMessages aud filter failed for topic $topicId: ${e.message}")
+                    fetchAud = false
+                    currentAudCursor = -1L
+                }
+            }
         }
 
         // Save cursors for next page
         prefs.edit()
             .putLong("${chatId}_topic${topicId}_doc_page_${page + 1}", currentDocCursor)
             .putLong("${chatId}_topic${topicId}_vid_page_${page + 1}", currentVidCursor)
+            .putLong("${chatId}_topic${topicId}_aud_page_${page + 1}", currentAudCursor)
             .apply()
 
         results.sortByDescending { it.messageId }
@@ -532,7 +593,8 @@ object TelegramRepository {
 
         val filters = listOf(
             TdApi.SearchMessagesFilterDocument(),
-            TdApi.SearchMessagesFilterVideo()
+            TdApi.SearchMessagesFilterVideo(),
+            TdApi.SearchMessagesFilterAudio()
         )
 
         if (cachedCustomChannels.isEmpty()) {
@@ -560,7 +622,7 @@ object TelegramRepository {
                     })
                     val found = (historyResult as? TdApi.FoundChatMessages) ?: continue
                     for (msg in found.messages) {
-                        extractVideoMessage(msg, seen, results)
+                        extractMediaMessage(msg, seen, results)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "SearchChatMessages error for $chan: ${e.message}")
@@ -580,7 +642,7 @@ object TelegramRepository {
                 })
                 val found = (result as? TdApi.FoundMessages) ?: continue
                 for (msg in found.messages) {
-                    extractVideoMessage(msg, seen, results)
+                    extractMediaMessage(msg, seen, results)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "SearchMessages error: ${e.message}")
@@ -591,7 +653,7 @@ object TelegramRepository {
         return results
     }
 
-    private fun extractVideoMessage(msg: TdApi.Message, seen: MutableSet<Pair<String, Long>>, results: MutableList<TelegramVideoMessage>) {
+    private fun extractMediaMessage(msg: TdApi.Message, seen: MutableSet<Pair<String, Long>>, results: MutableList<TelegramVideoMessage>) {
         when (val content = msg.content) {
             is TdApi.MessageDocument -> {
                 val mime = content.document.mimeType?.lowercase() ?: ""
@@ -604,11 +666,16 @@ object TelegramRepository {
                 val hasVideoMime = mime.startsWith("video/") || mime.contains("matroska")
                 val hasVideoKeywords = listOf("mkv", "mp4", "1080p", "720p", "480p", "4k", "hevc", "x265", "x264", "web-dl", "webrip", "bluray").any { filenameLower.contains(it) }
                 
+                // Audio format detection for documents sent as files
+                val hasAudioExt = ext in listOf("mp3", "flac", "aac", "ogg", "opus", "wav", "wma", "m4a", "alac", "aiff", "ape", "wv")
+                val hasAudioMime = mime.startsWith("audio/")
+
                 val isArchiveOrSplit = ext in listOf("rar", "zip", "7z", "tar", "gz", "bz2") || ext.matches(Regex("^\\d+$"))
                 
                 val isVideo = !isArchiveOrSplit && (hasVideoExt || hasVideoMime || hasVideoKeywords)
+                val isAudio = !isArchiveOrSplit && (hasAudioExt || hasAudioMime)
                 
-                if (!isVideo) return
+                if (!isVideo && !isAudio) return
 
                 val key = filename to content.document.document.size
                 if (seen.add(key)) {
@@ -642,6 +709,38 @@ object TelegramRepository {
                     ))
                 }
             }
+            is TdApi.MessageAudio -> {
+                val audio = content.audio
+                val title = audio.title?.takeIf { it.isNotBlank() }
+                val performer = audio.performer?.takeIf { it.isNotBlank() }
+                val filename = when {
+                    title != null && performer != null -> "$performer - $title"
+                    title != null -> title
+                    audio.fileName?.isNotBlank() == true -> audio.fileName
+                    else -> "Audio_${msg.id}"
+                }
+                // Add extension if missing
+                val displayName = if (filename.contains('.')) filename else {
+                    val ext = audio.mimeType?.substringAfter('/')?.let { 
+                        when (it) { "mpeg" -> "mp3"; "x-flac" -> "flac"; else -> it }
+                    } ?: "mp3"
+                    "$filename.$ext"
+                }
+                val key = displayName to audio.audio.size
+                if (seen.add(key)) {
+                    results.add(TelegramVideoMessage(
+                        messageId = msg.id,
+                        chatId = msg.chatId,
+                        fileName = displayName,
+                        fileId = audio.audio.id,
+                        fileSize = audio.audio.size,
+                        duration = audio.duration,
+                        mimeType = audio.mimeType ?: "audio/mpeg",
+                        caption = content.caption?.text ?: "",
+                        thumbnailFileId = audio.albumCoverThumbnail?.file?.id
+                    ))
+                }
+            }
         }
     }
 
@@ -656,6 +755,7 @@ object TelegramRepository {
             when (val content = msg.content) {
                 is TdApi.MessageVideo -> content.video.video.id
                 is TdApi.MessageDocument -> content.document.document.id
+                is TdApi.MessageAudio -> content.audio.audio.id
                 else -> null
             }
         } catch (e: Exception) {
