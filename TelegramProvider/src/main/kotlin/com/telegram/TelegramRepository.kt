@@ -447,6 +447,19 @@ object TelegramRepository {
             }
         }
 
+        // Fallback: If SearchChatMessages didn't find anything (maybe DB issues), try GetForumTopicHistory
+        if (results.isEmpty() && page == 1) {
+            try {
+                val historyResult = TelegramClient.sendRequest(TdApi.GetForumTopicHistory(chatId, topicId, 0L, 0, 100))
+                val messages = (historyResult as? TdApi.Messages)?.messages ?: emptyArray()
+                for (msg in messages) {
+                    extractVideoMessage(msg, seen, results)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "GetForumTopicHistory fallback failed: ${e.message}")
+            }
+        }
+
         results.sortByDescending { it.messageId }
         return results
     }
