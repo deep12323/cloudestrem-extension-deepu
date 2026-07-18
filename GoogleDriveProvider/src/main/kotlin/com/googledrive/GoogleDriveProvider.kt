@@ -72,13 +72,16 @@ class GoogleDriveProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val context = try { GoogleDriveRepository.getContext() } catch(e: Exception) { return null }
         val token = GoogleDriveRepository.getValidAccessToken(context) ?: return null
-        val fileUrl = "https://www.googleapis.com/drive/v3/files/$url?fields=id,name,mimeType,webContentLink,thumbnailLink&supportsAllDrives=true"
+        
+        // Cloudstream automatically prepends mainUrl to URLs. We just need the raw ID.
+        val actualId = url.substringAfterLast("/").trim()
+        val fileUrl = "https://www.googleapis.com/drive/v3/files/$actualId?fields=id,name,mimeType,webContentLink,thumbnailLink&supportsAllDrives=true"
         try {
             val response = app.get(fileUrl, headers = mapOf("Authorization" to "Bearer $token"))
             if (response.isSuccessful) {
                 val file: DriveFile = mapper.readValue(response.text)
                 if (file.mimeType == "application/vnd.google-apps.folder") {
-                    val children = GoogleDriveRepository.listAllFilesRecursively(context, url)
+                    val children = GoogleDriveRepository.listAllFilesRecursively(context, actualId)
                     val episodes = children.mapIndexed { index, child ->
                         newEpisode(child.id) {
                             this.name = child.name
@@ -90,7 +93,7 @@ class GoogleDriveProvider : MainAPI() {
                         this.posterUrl = file.thumbnailLink
                     }
                 } else {
-                    return newMovieLoadResponse(file.name, url, TvType.Movie, url) {
+                    return newMovieLoadResponse(file.name, url, TvType.Movie, actualId) {
                         this.posterUrl = file.thumbnailLink
                     }
                 }
