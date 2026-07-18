@@ -112,7 +112,9 @@ class GoogleDriveProvider : MainAPI() {
     ): Boolean {
         val context = try { GoogleDriveRepository.getContext() } catch(e: Exception) { return false }
         val token = GoogleDriveRepository.getValidAccessToken(context) ?: return false
-        val streamUrl = "https://www.googleapis.com/drive/v3/files/$data?alt=media&supportsAllDrives=true"
+
+        val actualId = data.substringAfterLast("/").trim()
+        val streamUrl = "https://www.googleapis.com/drive/v3/files/$actualId?alt=media&supportsAllDrives=true"
         
         callback(
             newExtractorLink(
