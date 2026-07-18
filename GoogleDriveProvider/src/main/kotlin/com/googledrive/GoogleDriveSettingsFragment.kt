@@ -11,9 +11,18 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStream
+import java.net.ServerSocket
+import java.net.SocketTimeoutException
 
 class GoogleDriveSettingsFragment(private val plugin: GoogleDrivePlugin) : BottomSheetDialogFragment() {
+
+    private var currentServerSocket: ServerSocket? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -45,7 +54,7 @@ class GoogleDriveSettingsFragment(private val plugin: GoogleDrivePlugin) : Botto
         mainContainer.addView(titleView)
 
         val descView = TextView(context).apply {
-            text = "Step 1: Enter your OAuth Client ID and Secret.\nStep 2: Click 'Open Google Login'. Authorize the app. When the browser redirects to a 'Site can't be reached' page, copy the entire URL from the address bar.\nStep 3: Paste the URL or Auth Code below and click Exchange."
+            text = "Enter your OAuth Client ID and Secret (Web Application type). Ensure you have added 'http://127.0.0.1:8080/callback' to your Authorized redirect URIs in Google Cloud Console. Then click 'Automatic Login'."
             setTextColor(Color.LTGRAY)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -72,8 +81,20 @@ class GoogleDriveSettingsFragment(private val plugin: GoogleDrivePlugin) : Botto
         }
         mainContainer.addView(clientSecretInput)
 
+        val statusText = TextView(context).apply {
+            text = ""
+            setTextColor(Color.YELLOW)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 16, 0, 16)
+            }
+        }
+        mainContainer.addView(statusText)
+
         val btnLogin = Button(context).apply {
-            text = "1. Open Google Login"
+            text = "Automatic Login"
             setOnClickListener {
                 val clientId = clientIdInput.text.toString().trim()
                 val clientSecret = clientSecretInput.text.toString().trim()
@@ -83,51 +104,101 @@ class GoogleDriveSettingsFragment(private val plugin: GoogleDrivePlugin) : Botto
                 }
                 GoogleDriveRepository.saveClientIdSecret(context, clientId, clientSecret)
                 
-                val url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=http://127.0.0.1&response_type=code&scope=https://www.googleapis.com/auth/drive.readonly&access_type=offline&prompt=consent"
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                startActivity(intent)
-            }
-        }
-        mainContainer.addView(btnLogin)
+                statusText.text = "Waiting for login in browser... (Timeout: 2 mins)"
+                this.isEnabled = false
 
-        val codeInput = EditText(context).apply {
-            hint = "Auth Code or Redirect URL"
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-        }
-        mainContainer.addView(codeInput)
-
-        val btnSave = Button(context).apply {
-            text = "2. Save & Exchange Code"
-            setOnClickListener {
-                var code = codeInput.text.toString().trim()
-                if (code.isBlank()) return@setOnClickListener
-                
-                // If the user pasted the full URL, extract the code parameter
-                if (code.startsWith("http")) {
+                viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+                    val redirectUri = "http://127.0.0.1:8080/callback"
+                    var code: String? = null
+                    
                     try {
-                        val uri = Uri.parse(code)
-                        val extracted = uri.getQueryParameter("code")
-                        if (!extracted.isNullOrBlank()) {
-                            code = extracted
+                        currentServerSocket?.close()
+                        currentServerSocket = ServerSocket(8080)
+                        currentServerSocket?.soTimeout = 120000 // 2 minutes timeout
+                        
+                        val url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=https://www.googleapis.com/auth/drive.readonly&access_type=offline&prompt=consent"
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        withContext(Dispatchers.Main) {
+                            startActivity(intent)
                         }
-                    } catch (e: Exception) {}
-                }
-                
-                Toast.makeText(context, "Exchanging code...", Toast.LENGTH_SHORT).show()
-                viewLifecycleOwner.lifecycleScope.launch {
-                    val success = GoogleDriveRepository.exchangeAuthCodeForTokens(context, code)
-                    if (success) {
-                        Toast.makeText(context, "Login Successful!", Toast.LENGTH_LONG).show()
-                        dismiss()
-                    } else {
-                        Toast.makeText(context, "Failed to login. Check your credentials.", Toast.LENGTH_LONG).show()
+                        
+                        val socket = currentServerSocket?.accept()
+                        if (socket != null) {
+                            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                            val output: OutputStream = socket.getOutputStream()
+                            val requestLine = reader.readLine()
+                            if (requestLine != null && requestLine.contains("GET /callback?code=")) {
+                                val codePart = requestLine.split(" ")[1].split("code=")[1].split("&")[0]
+                                code = codePart
+                                
+                                val responseHtml = "<html><body><h2>Login Successful!</h2><p>You can close this window and return to CloudStream.</p></body></html>"
+                                val httpResponse = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${responseHtml.length}\r\nConnection: close\r\n\r\n$responseHtml"
+                                output.write(httpResponse.toByteArray())
+                                output.flush()
+                            } else {
+                                val responseHtml = "<html><body><h2>Login Failed</h2><p>Invalid request received.</p></body></html>"
+                                val httpResponse = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html\r\nContent-Length: ${responseHtml.length}\r\nConnection: close\r\n\r\n$responseHtml"
+                                output.write(httpResponse.toByteArray())
+                                output.flush()
+                            }
+                            socket.close()
+                        }
+                    } catch (e: SocketTimeoutException) {
+                        withContext(Dispatchers.Main) {
+                            statusText.text = "Login timed out."
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        currentServerSocket?.close()
+                        currentServerSocket = null
+                        
+                        if (code != null) {
+                            withContext(Dispatchers.Main) {
+                                statusText.text = "Exchanging code..."
+                            }
+                            val success = GoogleDriveRepository.exchangeAuthCodeForTokens(context, code, redirectUri)
+                            withContext(Dispatchers.Main) {
+                                if (success) {
+                                    Toast.makeText(context, "Login Successful!", Toast.LENGTH_LONG).show()
+                                    dismiss()
+                                } else {
+                                    statusText.text = "Failed to exchange code. Check credentials."
+                                }
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                if (statusText.text.toString().startsWith("Waiting")) {
+                                    statusText.text = "Login aborted or failed."
+                                }
+                                this@apply.isEnabled = true
+                            }
+                        }
                     }
                 }
             }
         }
-        mainContainer.addView(btnSave)
+        mainContainer.addView(btnLogin)
+
+        val btnCancel = Button(context).apply {
+            text = "Cancel Login"
+            setOnClickListener {
+                currentServerSocket?.close()
+                currentServerSocket = null
+                statusText.text = "Login cancelled."
+                btnLogin.isEnabled = true
+            }
+        }
+        mainContainer.addView(btnCancel)
 
         return mainContainer
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        try {
+            currentServerSocket?.close()
+        } catch (e: Exception) {}
+        currentServerSocket = null
     }
 }

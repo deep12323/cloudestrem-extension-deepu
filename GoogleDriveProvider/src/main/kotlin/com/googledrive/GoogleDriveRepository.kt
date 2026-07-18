@@ -52,7 +52,7 @@ object GoogleDriveRepository {
             .apply()
     }
 
-    suspend fun exchangeAuthCodeForTokens(context: Context, code: String): Boolean {
+    suspend fun exchangeAuthCodeForTokens(context: Context, code: String, redirectUri: String): Boolean {
         val clientId = getClientId(context)
         val clientSecret = getClientSecret(context)
         if (clientId.isBlank() || clientSecret.isBlank()) return false
@@ -64,7 +64,7 @@ object GoogleDriveRepository {
                     "client_id" to clientId,
                     "client_secret" to clientSecret,
                     "code" to code,
-                    "redirect_uri" to "http://127.0.0.1",
+                    "redirect_uri" to redirectUri,
                     "grant_type" to "authorization_code"
                 )
             )
