@@ -167,7 +167,7 @@ object GoogleDriveRepository {
 
     private suspend fun queryFiles(context: Context, query: String): List<DriveFile> {
         val token = getValidAccessToken(context) ?: return emptyList()
-        val url = "https://www.googleapis.com/drive/v3/files?q=${java.net.URLEncoder.encode(query, "UTF-8")}&fields=files(id,name,mimeType,webContentLink,thumbnailLink)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true"
+        val url = "https://www.googleapis.com/drive/v3/files?q=${java.net.URLEncoder.encode(query, "UTF-8")}&fields=files(id,name,mimeType,webContentLink,thumbnailLink)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"
         
         try {
             val response = app.get(url, headers = mapOf("Authorization" to "Bearer $token"))
