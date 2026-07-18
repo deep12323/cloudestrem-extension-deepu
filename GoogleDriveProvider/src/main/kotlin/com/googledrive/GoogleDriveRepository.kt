@@ -173,7 +173,11 @@ object GoogleDriveRepository {
             val response = app.get(url, headers = mapOf("Authorization" to "Bearer $token"))
             if (response.isSuccessful) {
                 val data: DriveFileList = mapper.readValue(response.text)
-                return data.files
+                return data.files.filter { 
+                    it.mimeType == "application/vnd.google-apps.folder" || 
+                    it.mimeType.startsWith("video/") || 
+                    it.mimeType.startsWith("audio/")
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
