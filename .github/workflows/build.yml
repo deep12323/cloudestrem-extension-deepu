@@ -58,7 +58,7 @@ jobs:
               "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/GoogleDriveProvider.cs3?v=2",
               "tvTypes": ["Movie", "TvSeries"],
               "language": "en",
-              "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/512px-Google_Drive_icon_%282020%29.svg.png",
+              "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png",
               "apiVersion": 10,
               "version": 1,
               "authors": ["deepu2135"],
