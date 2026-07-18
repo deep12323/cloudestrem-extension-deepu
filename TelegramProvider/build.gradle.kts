@@ -32,7 +32,7 @@ cloudstream {
     language = "en"
 
     // Telegram icon URL
-    iconUrl = "https://upload.wikimedia.org/wikipedia/commons/8/83/Telegram_2019_Logo.svg"
+    iconUrl = "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/icon.png"
 }
 
 android {

@@ -45,7 +45,7 @@ jobs:
               "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TelegramProvider.cs3?v=2",
               "tvTypes": ["Movie", "TvSeries"],
               "language": "en",
-              "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/8/83/Telegram_2019_Logo.svg",
+              "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/icon.png",
               "apiVersion": 10,
               "version": 92,
               "authors": ["deepu2135"],
