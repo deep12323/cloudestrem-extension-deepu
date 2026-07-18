@@ -5,7 +5,7 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 }
 
-version = 1
+version = 2
 
 cloudstream {
     description = "Stream video and audio from your Google Drive"
@@ -14,7 +14,7 @@ cloudstream {
     tvTypes = listOf("Movie", "TvSeries")
     requiresResources = false
     language = "en"
-    iconUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/512px-Google_Drive_icon_%282020%29.svg.png"
+    iconUrl = "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
 }
 
 android {

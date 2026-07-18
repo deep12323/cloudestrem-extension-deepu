@@ -60,7 +60,7 @@ jobs:
               "language": "en",
               "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png",
               "apiVersion": 10,
-              "version": 1,
+              "version": 2,
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Stream video and audio from your Google Drive"
