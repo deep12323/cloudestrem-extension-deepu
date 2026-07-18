@@ -586,7 +586,7 @@ object TelegramRepository {
 
     suspend fun searchVideoMessages(
         query: String,
-        limit: Int = 50
+        limit: Int = 1000
     ): List<TelegramVideoMessage> {
         val results = mutableListOf<TelegramVideoMessage>()
         val seen = mutableSetOf<Pair<String, Long>>()
@@ -610,19 +610,33 @@ object TelegramRepository {
             val chatId = getChatId(chan) ?: continue
             for (filter in filters) {
                 try {
-                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
-                        req.chatId = chatId
-                        req.query = query
-                        req.senderId = null
-                        req.fromMessageId = 0
-                        req.offset = 0
-                        req.limit = limit
-                        req.filter = filter
-                        req.topicId = null
-                    })
-                    val found = (historyResult as? TdApi.FoundChatMessages) ?: continue
-                    for (msg in found.messages) {
-                        extractMediaMessage(msg, seen, results)
+                    var currentFromMessageId = 0L
+                    var fetched = 0
+                    while (fetched < limit) {
+                        val fetchLimit = minOf(100, limit - fetched)
+                        val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                            req.chatId = chatId
+                            req.query = query
+                            req.senderId = null
+                            req.fromMessageId = currentFromMessageId
+                            req.offset = 0
+                            req.limit = fetchLimit
+                            req.filter = filter
+                            req.topicId = null
+                        })
+                        val found = (historyResult as? TdApi.FoundChatMessages) ?: break
+                        if (found.messages.isEmpty()) break
+                        
+                        for (msg in found.messages) {
+                            extractMediaMessage(msg, seen, results)
+                        }
+                        
+                        fetched += found.messages.size
+                        if (found.messages.size < fetchLimit) break
+                        
+                        val lastId = found.messages.last().id
+                        if (currentFromMessageId == lastId && found.messages.size == 1) break
+                        currentFromMessageId = lastId
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "SearchChatMessages error for $chan: ${e.message}")
@@ -633,16 +647,27 @@ object TelegramRepository {
         // 2. Search globally across all joined chats
         for (filter in filters) {
             try {
-                val result = TelegramClient.sendRequest(TdApi.SearchMessages().also { req ->
-                    req.chatList = null  // null = search all chats
-                    req.query = query
-                    req.offset = ""
-                    req.limit = limit
-                    req.filter = filter
-                })
-                val found = (result as? TdApi.FoundMessages) ?: continue
-                for (msg in found.messages) {
-                    extractMediaMessage(msg, seen, results)
+                var currentOffset = ""
+                var fetched = 0
+                while (fetched < limit) {
+                    val fetchLimit = minOf(100, limit - fetched)
+                    val result = TelegramClient.sendRequest(TdApi.SearchMessages().also { req ->
+                        req.chatList = null  // null = search all chats
+                        req.query = query
+                        req.offset = currentOffset
+                        req.limit = fetchLimit
+                        req.filter = filter
+                    })
+                    val found = (result as? TdApi.FoundMessages) ?: break
+                    if (found.messages.isEmpty()) break
+                    
+                    for (msg in found.messages) {
+                        extractMediaMessage(msg, seen, results)
+                    }
+                    
+                    fetched += found.messages.size
+                    currentOffset = found.nextOffset
+                    if (currentOffset.isEmpty()) break
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "SearchMessages error: ${e.message}")

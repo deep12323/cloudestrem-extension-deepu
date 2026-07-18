@@ -158,7 +158,7 @@ class TeleflixProvider : MainAPI() {
         
         val results = mutableSetOf<TelegramVideoMessage>()
         for (q in queries) {
-            val res = TelegramRepository.searchVideoMessages(q, limit = 20)
+            val res = TelegramRepository.searchVideoMessages(q, limit = 1000)
             results.addAll(res)
         }
         
