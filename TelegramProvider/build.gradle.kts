@@ -9,7 +9,7 @@ dependencies {
 }
 
 // Use an integer for version numbers
-version = 91
+version = 92
 
 cloudstream {
     // All of these properties are optional, you can safely remove any of them.
@@ -32,7 +32,7 @@ cloudstream {
     language = "en"
 
     // Telegram icon URL
-    iconUrl = "https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg"
+    iconUrl = "https://upload.wikimedia.org/wikipedia/commons/8/83/Telegram_2019_Logo.svg"
 }
 
 android {
