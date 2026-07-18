@@ -586,16 +586,19 @@ object TelegramRepository {
 
     suspend fun searchVideoMessages(
         query: String,
-        limit: Int = 1000
+        limit: Int = 1000,
+        includeAudio: Boolean = true
     ): List<TelegramVideoMessage> {
         val results = mutableListOf<TelegramVideoMessage>()
         val seen = mutableSetOf<Pair<String, Long>>()
 
-        val filters = listOf(
+        val filters = mutableListOf<TdApi.SearchMessagesFilter>(
             TdApi.SearchMessagesFilterDocument(),
-            TdApi.SearchMessagesFilterVideo(),
-            TdApi.SearchMessagesFilterAudio()
+            TdApi.SearchMessagesFilterVideo()
         )
+        if (includeAudio) {
+            filters.add(TdApi.SearchMessagesFilterAudio())
+        }
 
         if (cachedCustomChannels.isEmpty()) {
             try {
