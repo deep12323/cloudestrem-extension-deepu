@@ -135,6 +135,14 @@ object GoogleDriveRepository {
         return queryFiles(context, "'root' in parents and mimeType = 'application/vnd.google-apps.folder'")
     }
 
+    suspend fun listStarredItems(context: Context): List<DriveFile> {
+        return queryFiles(context, "starred = true")
+    }
+
+    suspend fun listSharedItems(context: Context): List<DriveFile> {
+        return queryFiles(context, "sharedWithMe = true")
+    }
+
     suspend fun listFilesInFolder(context: Context, folderId: String): List<DriveFile> {
         return queryFiles(context, "'$folderId' in parents and mimeType != 'application/vnd.google-apps.folder'")
     }

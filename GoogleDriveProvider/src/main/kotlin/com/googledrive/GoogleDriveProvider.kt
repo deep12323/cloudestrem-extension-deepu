@@ -16,17 +16,36 @@ class GoogleDriveProvider : MainAPI() {
 
     private val mapper = jacksonObjectMapper()
 
+    override val mainPage = mainPageOf(
+        "root" to "My Drive Folders",
+        "starred" to "Starred",
+        "shared" to "Shared with me"
+    )
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val context = try { GoogleDriveRepository.getContext() } catch(e: Exception) { return null }
-        val rootFolders = GoogleDriveRepository.listRootFolders(context)
-        if (rootFolders.isEmpty()) return null
+        
+        val itemsData = when (request.data) {
+            "root" -> GoogleDriveRepository.listRootFolders(context)
+            "starred" -> GoogleDriveRepository.listStarredItems(context)
+            "shared" -> GoogleDriveRepository.listSharedItems(context)
+            else -> emptyList()
+        }
+        
+        if (itemsData.isEmpty()) return null
 
-        val items = rootFolders.map { folder ->
-            newTvSeriesSearchResponse(folder.name, folder.id, TvType.TvSeries) {
-                this.posterUrl = folder.thumbnailLink
+        val items = itemsData.map { file ->
+            if (file.mimeType == "application/vnd.google-apps.folder") {
+                newTvSeriesSearchResponse(file.name, file.id, TvType.TvSeries) {
+                    this.posterUrl = file.thumbnailLink
+                }
+            } else {
+                newMovieSearchResponse(file.name, file.id, TvType.Movie) {
+                    this.posterUrl = file.thumbnailLink
+                }
             }
         }
-        return newHomePageResponse(HomePageList("My Drive Folders", items), false)
+        return newHomePageResponse(HomePageList(request.name, items), false)
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
