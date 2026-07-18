@@ -12,7 +12,8 @@ import kotlinx.coroutines.sync.withLock
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class TokenResponse(
     @JsonProperty("access_token") val accessToken: String,
-    @JsonProperty("expires_in") val expiresIn: Int
+    @JsonProperty("expires_in") val expiresIn: Int,
+    @JsonProperty("refresh_token") val refreshToken: String? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -44,14 +45,47 @@ object GoogleDriveRepository {
     fun getClientSecret(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CLIENT_SECRET, "") ?: ""
     fun getRefreshToken(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_REFRESH_TOKEN, "") ?: ""
 
-    fun saveCredentials(context: Context, clientId: String, clientSecret: String, refreshToken: String) {
+    fun saveClientIdSecret(context: Context, clientId: String, clientSecret: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_CLIENT_ID, clientId)
             .putString(KEY_CLIENT_SECRET, clientSecret)
-            .putString(KEY_REFRESH_TOKEN, refreshToken)
             .apply()
+    }
+
+    suspend fun exchangeAuthCodeForTokens(context: Context, code: String): Boolean {
+        val clientId = getClientId(context)
+        val clientSecret = getClientSecret(context)
+        if (clientId.isBlank() || clientSecret.isBlank()) return false
         
-        currentAccessToken = null
+        try {
+            val response = app.post(
+                "https://oauth2.googleapis.com/token",
+                data = mapOf(
+                    "client_id" to clientId,
+                    "client_secret" to clientSecret,
+                    "code" to code,
+                    "redirect_uri" to "http://127.0.0.1",
+                    "grant_type" to "authorization_code"
+                )
+            )
+            if (response.isSuccessful) {
+                val tokenData: TokenResponse = mapper.readValue(response.text)
+                val refresh = tokenData.refreshToken
+                
+                if (refresh != null) {
+                    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                        .putString(KEY_REFRESH_TOKEN, refresh)
+                        .apply()
+                }
+                
+                currentAccessToken = tokenData.accessToken
+                tokenExpiry = System.currentTimeMillis() + (tokenData.expiresIn * 1000L)
+                return true
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return false
     }
 
     suspend fun getValidAccessToken(context: Context): String? {
