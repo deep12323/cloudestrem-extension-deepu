@@ -22,7 +22,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Providers
-        run: ./gradlew :TelegramProvider:make
+        run: ./gradlew :TelegramProvider:make :GoogleDriveProvider:make
 
       - name: Generate repo.json and plugins.json
         run: |
@@ -51,6 +51,19 @@ jobs:
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Stream any media from your Telegram chats and channels on-demand"
+            },
+            {
+              "name": "Google Drive",
+              "internalName": "GoogleDriveProvider",
+              "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/GoogleDriveProvider.cs3?v=2",
+              "tvTypes": ["Movie", "TvSeries"],
+              "language": "en",
+              "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/512px-Google_Drive_icon_%282020%29.svg.png",
+              "apiVersion": 10,
+              "version": 1,
+              "authors": ["deepu2135"],
+              "status": 1,
+              "description": "Stream video and audio from your Google Drive"
             }
           ]' > builds/plugins.json
 
