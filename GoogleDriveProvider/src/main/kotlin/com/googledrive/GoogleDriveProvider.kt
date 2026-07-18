@@ -7,7 +7,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.AcraApplication
 
 class GoogleDriveProvider : MainAPI() {
     override var mainUrl = "https://drive.google.com"
@@ -18,7 +17,7 @@ class GoogleDriveProvider : MainAPI() {
     private val mapper = jacksonObjectMapper()
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        val context = AcraApplication.context ?: return null
+        val context = try { GoogleDriveRepository.getContext() } catch(e: Exception) { return null }
         val rootFolders = GoogleDriveRepository.listRootFolders(context)
         if (rootFolders.isEmpty()) return null
 
@@ -31,7 +30,7 @@ class GoogleDriveProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        val context = AcraApplication.context ?: return null
+        val context = try { GoogleDriveRepository.getContext() } catch(e: Exception) { return null }
         val token = GoogleDriveRepository.getValidAccessToken(context) ?: return null
         
         val searchUrl = "https://www.googleapis.com/drive/v3/files?q=${java.net.URLEncoder.encode("name contains '$query' and mimeType != 'application/vnd.google-apps.folder'", "UTF-8")}&fields=files(id,name,mimeType,webContentLink,thumbnailLink)&pageSize=50"
@@ -52,7 +51,7 @@ class GoogleDriveProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val context = AcraApplication.context ?: return null
+        val context = try { GoogleDriveRepository.getContext() } catch(e: Exception) { return null }
         val token = GoogleDriveRepository.getValidAccessToken(context) ?: return null
         val fileUrl = "https://www.googleapis.com/drive/v3/files/$url?fields=id,name,mimeType,webContentLink,thumbnailLink"
         try {
@@ -89,7 +88,7 @@ class GoogleDriveProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val context = AcraApplication.context ?: return false
+        val context = try { GoogleDriveRepository.getContext() } catch(e: Exception) { return false }
         val token = GoogleDriveRepository.getValidAccessToken(context) ?: return false
         val streamUrl = "https://www.googleapis.com/drive/v3/files/$data?alt=media"
         
@@ -98,11 +97,11 @@ class GoogleDriveProvider : MainAPI() {
                 source = this.name,
                 name = "Google Drive",
                 url = streamUrl,
-                referer = "",
-                quality = Qualities.Unknown.value,
-                type = ExtractorLinkType.VIDEO,
-                headers = mapOf("Authorization" to "Bearer $token")
-            )
+                type = ExtractorLinkType.VIDEO
+            ) {
+                this.quality = Qualities.Unknown.value
+                this.headers = mapOf("Authorization" to "Bearer $token")
+            }
         )
         return true
     }

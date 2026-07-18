@@ -28,6 +28,7 @@ class GoogleDrivePlugin : Plugin() {
     }
 
     override fun load(context: Context) {
+        GoogleDriveRepository.setContext(context)
         registerMainAPI(GoogleDriveProvider())
     }
 }

@@ -39,7 +39,15 @@ object GoogleDriveRepository {
     private var currentAccessToken: String? = null
     private var tokenExpiry: Long = 0
     private val tokenMutex = Mutex()
-    private val mapper = jacksonObjectMapper()
+    val mapper = jacksonObjectMapper()
+
+    private var pluginContext: Context? = null
+
+    fun setContext(context: Context) {
+        pluginContext = context
+    }
+
+    fun getContext(): Context = pluginContext ?: throw RuntimeException("Context not initialized")
 
     fun getClientId(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CLIENT_ID, "") ?: ""
     fun getClientSecret(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CLIENT_SECRET, "") ?: ""
