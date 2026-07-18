@@ -132,7 +132,7 @@ object GoogleDriveRepository {
     }
 
     suspend fun listRootFolders(context: Context): List<DriveFile> {
-        return queryFiles(context, "'root' in parents and mimeType = 'application/vnd.google-apps.folder'")
+        return queryFiles(context, "'root' in parents")
     }
 
     suspend fun listStarredItems(context: Context): List<DriveFile> {
@@ -147,9 +147,27 @@ object GoogleDriveRepository {
         return queryFiles(context, "'$folderId' in parents and mimeType != 'application/vnd.google-apps.folder'")
     }
 
+    suspend fun listAllFilesRecursively(context: Context, folderId: String): List<DriveFile> {
+        val result = mutableListOf<DriveFile>()
+        val queue = mutableListOf(folderId)
+        
+        while (queue.isNotEmpty()) {
+            val currentFolder = queue.removeAt(0)
+            val children = queryFiles(context, "'$currentFolder' in parents")
+            for (child in children) {
+                if (child.mimeType == "application/vnd.google-apps.folder") {
+                    queue.add(child.id)
+                } else {
+                    result.add(child)
+                }
+            }
+        }
+        return result
+    }
+
     private suspend fun queryFiles(context: Context, query: String): List<DriveFile> {
         val token = getValidAccessToken(context) ?: return emptyList()
-        val url = "https://www.googleapis.com/drive/v3/files?q=${java.net.URLEncoder.encode(query, "UTF-8")}&fields=files(id,name,mimeType,webContentLink,thumbnailLink)&pageSize=1000"
+        val url = "https://www.googleapis.com/drive/v3/files?q=${java.net.URLEncoder.encode(query, "UTF-8")}&fields=files(id,name,mimeType,webContentLink,thumbnailLink)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true"
         
         try {
             val response = app.get(url, headers = mapOf("Authorization" to "Bearer $token"))

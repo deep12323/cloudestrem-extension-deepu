@@ -72,13 +72,13 @@ class GoogleDriveProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val context = try { GoogleDriveRepository.getContext() } catch(e: Exception) { return null }
         val token = GoogleDriveRepository.getValidAccessToken(context) ?: return null
-        val fileUrl = "https://www.googleapis.com/drive/v3/files/$url?fields=id,name,mimeType,webContentLink,thumbnailLink"
+        val fileUrl = "https://www.googleapis.com/drive/v3/files/$url?fields=id,name,mimeType,webContentLink,thumbnailLink&supportsAllDrives=true"
         try {
             val response = app.get(fileUrl, headers = mapOf("Authorization" to "Bearer $token"))
             if (response.isSuccessful) {
                 val file: DriveFile = mapper.readValue(response.text)
                 if (file.mimeType == "application/vnd.google-apps.folder") {
-                    val children = GoogleDriveRepository.listFilesInFolder(context, url)
+                    val children = GoogleDriveRepository.listAllFilesRecursively(context, url)
                     val episodes = children.mapIndexed { index, child ->
                         newEpisode(child.id) {
                             this.name = child.name
@@ -109,7 +109,7 @@ class GoogleDriveProvider : MainAPI() {
     ): Boolean {
         val context = try { GoogleDriveRepository.getContext() } catch(e: Exception) { return false }
         val token = GoogleDriveRepository.getValidAccessToken(context) ?: return false
-        val streamUrl = "https://www.googleapis.com/drive/v3/files/$data?alt=media"
+        val streamUrl = "https://www.googleapis.com/drive/v3/files/$data?alt=media&supportsAllDrives=true"
         
         callback(
             newExtractorLink(
