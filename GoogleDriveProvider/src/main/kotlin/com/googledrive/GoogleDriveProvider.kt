@@ -37,11 +37,11 @@ class GoogleDriveProvider : MainAPI() {
         val items = itemsData.map { file ->
             if (file.mimeType == "application/vnd.google-apps.folder") {
                 newTvSeriesSearchResponse(file.name, file.id, TvType.TvSeries) {
-                    this.posterUrl = file.thumbnailLink
+                    this.posterUrl = file.thumbnailLink ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
                 }
             } else {
                 newMovieSearchResponse(file.name, file.id, TvType.Movie) {
-                    this.posterUrl = file.thumbnailLink
+                    this.posterUrl = file.thumbnailLink ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
                 }
             }
         }
@@ -85,16 +85,16 @@ class GoogleDriveProvider : MainAPI() {
                     val episodes = children.mapIndexed { index, child ->
                         newEpisode(child.id) {
                             this.name = child.name
-                            this.posterUrl = child.thumbnailLink
+                            this.posterUrl = child.thumbnailLink ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
                             this.episode = index + 1
                         }
                     }
                     return newTvSeriesLoadResponse(file.name, url, TvType.TvSeries, episodes) {
-                        this.posterUrl = file.thumbnailLink
+                        this.posterUrl = file.thumbnailLink ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
                     }
                 } else {
                     return newMovieLoadResponse(file.name, url, TvType.Movie, actualId) {
-                        this.posterUrl = file.thumbnailLink
+                        this.posterUrl = file.thumbnailLink ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
                     }
                 }
             }
