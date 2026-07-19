@@ -249,8 +249,6 @@ object TelegramClient {
                     { e -> Log.e(TAG, "Default exception", e) }
                 )
                 stepLog(context, "Client.create returned")
-                sendTdlibParameters(context)
-                stepLog(context, "SetTdlibParameters sent")
             } catch (e: Throwable) {
                 Log.e(TAG, "TDLib Client.create failed", e)
                 stepLog(context, "EXCEPTION: ${e.message}")
@@ -313,7 +311,22 @@ object TelegramClient {
             p.deviceModel = "Android Device"
             p.systemVersion = "Android"
             p.applicationVersion = "1.0"
-        }, {
+        }, { result ->
+            if (result is TdApi.Error) {
+                Log.e(TAG, "SetTdlibParameters failed: ${result.code} ${result.message}")
+                if (result.message.contains("key", ignoreCase = true) || result.code == 401) {
+                    stepLog(context, "Database key is invalid, deleting database to recover...")
+                    context.getSharedPreferences("tdlib_prefs", Context.MODE_PRIVATE).edit().remove("db_key").apply()
+                    try { java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry("tdlib_db_key_alias") } } catch (_: Throwable) {}
+                    try { File(dbDir).deleteRecursively() } catch (_: Throwable) {}
+                    try { File(filesDir).deleteRecursively() } catch (_: Throwable) {}
+                    reset()
+                    initialize(context)
+                } else {
+                    _authState.value = TelegramAuthState.Error("TDLib init failed: ${result.message}")
+                }
+                return@send
+            }
             // Automatically clean up any orphaned streaming files from previous crashed sessions
             optimizeStorage()
             // After parameters are set, configure cache size limits
