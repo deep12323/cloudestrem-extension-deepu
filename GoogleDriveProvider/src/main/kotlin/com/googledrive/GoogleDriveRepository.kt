@@ -165,6 +165,23 @@ object GoogleDriveRepository {
         return result
     }
 
+    suspend fun getFirstVideoThumbnail(context: Context, folderId: String): String? {
+        val token = getValidAccessToken(context) ?: return null
+        val query = "'$folderId' in parents and mimeType contains 'video/'"
+        val url = "https://www.googleapis.com/drive/v3/files?q=${java.net.URLEncoder.encode(query, "UTF-8")}&fields=files(thumbnailLink)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"
+        
+        try {
+            val response = app.get(url, headers = mapOf("Authorization" to "Bearer $token"))
+            if (response.isSuccessful) {
+                val data: DriveFileList = mapper.readValue(response.text)
+                return data.files.firstOrNull()?.thumbnailLink
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
+    }
+
     private suspend fun queryFiles(context: Context, query: String): List<DriveFile> {
         val token = getValidAccessToken(context) ?: return emptyList()
         val url = "https://www.googleapis.com/drive/v3/files?q=${java.net.URLEncoder.encode(query, "UTF-8")}&fields=files(id,name,mimeType,webContentLink,thumbnailLink)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"

@@ -7,6 +7,9 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 class GoogleDriveProvider : MainAPI() {
     override var mainUrl = "https://drive.google.com"
@@ -34,16 +37,21 @@ class GoogleDriveProvider : MainAPI() {
         
         if (itemsData.isEmpty()) return null
 
-        val items = itemsData.map { file ->
-            if (file.mimeType == "application/vnd.google-apps.folder") {
-                newTvSeriesSearchResponse(file.name, file.id, TvType.TvSeries) {
-                    this.posterUrl = file.thumbnailLink ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
+        val items = coroutineScope {
+            itemsData.map { file ->
+                async {
+                    if (file.mimeType == "application/vnd.google-apps.folder") {
+                        val thumb = file.thumbnailLink ?: GoogleDriveRepository.getFirstVideoThumbnail(context, file.id)
+                        newTvSeriesSearchResponse(file.name, file.id, TvType.TvSeries) {
+                            this.posterUrl = thumb ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
+                        }
+                    } else {
+                        newMovieSearchResponse(file.name, file.id, TvType.Movie) {
+                            this.posterUrl = file.thumbnailLink ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
+                        }
+                    }
                 }
-            } else {
-                newMovieSearchResponse(file.name, file.id, TvType.Movie) {
-                    this.posterUrl = file.thumbnailLink ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
-                }
-            }
+            }.awaitAll()
         }
         return newHomePageResponse(HomePageList(request.name, items), false)
     }
@@ -89,8 +97,9 @@ class GoogleDriveProvider : MainAPI() {
                             this.episode = index + 1
                         }
                     }
+                    val firstThumb = children.firstOrNull { it.thumbnailLink != null }?.thumbnailLink
                     return newTvSeriesLoadResponse(file.name, url, TvType.TvSeries, episodes) {
-                        this.posterUrl = file.thumbnailLink ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
+                        this.posterUrl = file.thumbnailLink ?: firstThumb ?: "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png"
                     }
                 } else {
                     return newMovieLoadResponse(file.name, url, TvType.Movie, actualId) {
