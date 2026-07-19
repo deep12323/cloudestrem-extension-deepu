@@ -30,7 +30,7 @@ A fully-featured plugin to stream videos and audio directly from your personal G
 
 ## 📁 Google Drive Configuration Guide
 
-To use the Google Drive plugin, you must configure it with your own Google Cloud API credentials. Since you are accessing your personal drive, you need your own `Client ID`, `Client Secret`, and `Refresh Token`.
+To use the Google Drive plugin, you must configure it with your own Google Cloud API credentials. Since you are accessing your personal drive, you need your own `Client ID` and `Client Secret`.
 
 ### Step 1: Create Google Cloud Credentials
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project.
@@ -45,19 +45,9 @@ To use the Google Drive plugin, you must configure it with your own Google Cloud
    - Add the following **Authorized redirect URI**: `https://developers.google.com/oauthplayground`
    - Click Create and copy your **Client ID** and **Client Secret**.
 
-### Step 2: Generate a Refresh Token
-1. Go to the [Google OAuth 2.0 Playground](https://developers.google.com/oauthplayground/).
-2. Click the **Gear Icon (Settings)** on the top right corner.
-3. Check **"Use your own OAuth credentials"**.
-4. Paste your **OAuth Client ID** and **OAuth Client secret**.
-5. Close the settings. On the left sidebar under "Step 1", scroll down to **Drive API v3** and check `https://www.googleapis.com/auth/drive.readonly`.
-6. Click **Authorize APIs** and sign into your Google account (ignore the "unverified app" warning, it's your own app).
-7. Under "Step 2", click **"Exchange authorization code for tokens"**.
-8. Copy your generated **Refresh token**.
-
-### Step 3: Add to Cloudstream
+### Step 2: Add to Cloudstream
 1. Open Cloudstream and click the Gear Icon next to the Google Drive plugin.
-2. Paste your **Client ID**, **Client Secret**, and **Refresh Token** into the settings.
+2. Paste your **Client ID** and **Client Secret** into the settings.
 3. You're done! Return to the home page and your Google Drive will load instantly.
 
 ---
