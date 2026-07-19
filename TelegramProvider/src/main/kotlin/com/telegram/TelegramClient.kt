@@ -104,6 +104,14 @@ object TelegramClient {
                 val versionSuffix = if (targetEntry.crc >= 0) targetEntry.crc.toString(16) else targetEntry.size.toString()
                 val classLoaderHash = TelegramClient::class.java.classLoader?.hashCode()?.toString(16) ?: "unknown"
                 val targetFile = File(nativeDir, "libtdjni-$abi-$versionSuffix-$classLoaderHash.so")
+                
+                // Cleanup old native libraries to prevent disk space leaks on plugin reloads
+                nativeDir.listFiles()?.forEach { file ->
+                    if (file.isFile && file.name != targetFile.name && file.name.startsWith("libtdjni-")) {
+                        try { file.delete() } catch (_: Throwable) {}
+                    }
+                }
+
                 stepLog(
                     context,
                     "destFile path is ${targetFile.absolutePath}, exists=${targetFile.exists()}, length=${targetFile.length()}"
