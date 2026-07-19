@@ -27,12 +27,14 @@ object TelegramStreamingProxy {
     @Volatile private var running = false
     private val activeStreams = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     @Volatile private var lastStreamedFileId: Int? = null
+    @Volatile private var authToken: String = ""
 
     fun start() {
         if (serverSocket != null) return
         port = findFreePort()
         serverSocket = ServerSocket(port)
         running = true
+        authToken = java.util.UUID.randomUUID().toString()
         Log.d(TAG, "Streaming proxy starting on port $port")
 
         thread(name = "TelegramProxyListener") {
@@ -74,6 +76,17 @@ object TelegramStreamingProxy {
             val parts = reqLine.split(" ")
             if (parts.size < 2) return
             val path = parts[1] // /file/{fileId} or /thumbnail/{fileId}
+
+            val queryStrAll = path.substringAfter("?", "")
+            val token = queryStrAll.split("&").find { it.startsWith("token=") }?.substringAfter("=")
+            if (token != authToken || authToken.isEmpty()) {
+                val output = socket.getOutputStream()
+                output.write("HTTP/1.1 403 Forbidden\r\n\r\n".toByteArray())
+                output.close()
+                socket.close()
+                return
+            }
+
             var fileId: Int? = null
             var isThumbnail = false
             var urlSize = 0L
@@ -326,11 +339,11 @@ object TelegramStreamingProxy {
 
     fun getUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String {
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize"
+        return "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize&token=$authToken"
     }
 
     fun getThumbnailUrl(chatId: Long, messageId: Long): String {
-        return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId"
+        return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId?token=$authToken"
     }
 
     private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream) {

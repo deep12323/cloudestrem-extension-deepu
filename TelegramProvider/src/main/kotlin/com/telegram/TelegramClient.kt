@@ -2,6 +2,7 @@ package com.telegram
 
 import android.content.Context
 import android.os.Build
+import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -295,7 +296,7 @@ object TelegramClient {
             p.apiHash = TelegramRepository.getApiHash(context)
             p.databaseDirectory = dbDir
             p.filesDirectory = filesDir
-            p.databaseEncryptionKey = ByteArray(0)
+            p.databaseEncryptionKey = getOrGenerateDbKey(context)
             p.useFileDatabase = true
             p.useChatInfoDatabase = true
             p.useMessageDatabase = true // MUST be true for SearchChatMessages and SearchMessages to work!
@@ -492,5 +493,78 @@ object TelegramClient {
         client?.send(TdApi.Close(), null)
         client = null
         _authState.value = TelegramAuthState.Idle
+    }
+
+    private fun getOrGenerateDbKey(context: Context): ByteArray {
+        val prefs = context.getSharedPreferences("tdlib_prefs", Context.MODE_PRIVATE)
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            val encodedKey = prefs.getString("db_key_legacy", null)
+            if (encodedKey != null) {
+                return Base64.decode(encodedKey, Base64.DEFAULT)
+            }
+            val rawDbKey = ByteArray(32)
+            java.security.SecureRandom().nextBytes(rawDbKey)
+            prefs.edit().putString("db_key_legacy", Base64.encodeToString(rawDbKey, Base64.DEFAULT)).apply()
+            return rawDbKey
+        }
+
+        val encryptedKeyBase64 = prefs.getString("db_key", null)
+        
+        val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
+        keyStore.load(null)
+        val alias = "tdlib_db_key_alias"
+        
+        if (encryptedKeyBase64 == null) {
+            val keyGenerator = javax.crypto.KeyGenerator.getInstance(
+                android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, 
+                "AndroidKeyStore"
+            )
+            val spec = android.security.keystore.KeyGenParameterSpec.Builder(
+                alias,
+                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                .build()
+            keyGenerator.init(spec)
+            val secretKey = keyGenerator.generateKey()
+
+            val rawDbKey = ByteArray(32)
+            java.security.SecureRandom().nextBytes(rawDbKey)
+
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey)
+            val iv = cipher.iv
+            val encryptedDbKey = cipher.doFinal(rawDbKey)
+            
+            val combined = iv + encryptedDbKey
+            prefs.edit().putString("db_key", Base64.encodeToString(combined, Base64.DEFAULT)).apply()
+            
+            return rawDbKey
+        } else {
+            try {
+                val combined = Base64.decode(encryptedKeyBase64, Base64.DEFAULT)
+                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                val secretKey = keyStore.getKey(alias, null) as? javax.crypto.SecretKey
+                
+                if (secretKey == null) {
+                    throw IllegalStateException("Keystore key is null")
+                }
+                
+                val iv = combined.copyOfRange(0, 12)
+                val encryptedDbKey = combined.copyOfRange(12, combined.size)
+                
+                cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey, javax.crypto.spec.GCMParameterSpec(128, iv))
+                return cipher.doFinal(encryptedDbKey)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to decrypt DB key, resetting TDLib", e)
+                prefs.edit().remove("db_key").apply()
+                try { keyStore.deleteEntry(alias) } catch (_: Exception) {}
+                try { java.io.File(context.applicationContext.filesDir, "tdlib").deleteRecursively() } catch (_: Exception) {}
+                try { java.io.File(context.applicationContext.filesDir, "tdlib_files").deleteRecursively() } catch (_: Exception) {}
+                return getOrGenerateDbKey(context)
+            }
+        }
     }
 }
