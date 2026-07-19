@@ -5,7 +5,7 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 }
 
-version = 8
+version = 9
 
 cloudstream {
     description = "Stream video and audio from your Google Drive"
