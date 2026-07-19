@@ -9,6 +9,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -28,6 +30,7 @@ object TelegramClient {
     private const val NATIVE_LIB_NAME = "libtdjni.so"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var isAutoCleanerRunning = false
 
     private val _authState = MutableStateFlow<TelegramAuthState>(TelegramAuthState.Idle)
     val authState: StateFlow<TelegramAuthState> = _authState.asStateFlow()
@@ -307,6 +310,7 @@ object TelegramClient {
             // After parameters are set, configure cache size limits
             val limitMb = TelegramRepository.getCacheLimitMb(context)
             updateCacheLimit(limitMb)
+            startBackgroundVideoCleaner(context)
         })
     }
     
@@ -320,6 +324,42 @@ object TelegramClient {
         client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(3600L)), null)
     }
 
+    private fun startBackgroundVideoCleaner(context: Context) {
+        if (isAutoCleanerRunning) return
+        isAutoCleanerRunning = true
+        scope.launch {
+            while (isActive) {
+                delay(30 * 60 * 1000L) // check every 30 minutes
+                val limitMb = TelegramRepository.getCacheLimitMb(context)
+                if (limitMb > 0) {
+                    optimizeVideoStorage(limitMb)
+                } else if (limitMb <= 0L) {
+                    optimizeVideoStorage(0L) // clear immediately if set to no cache
+                }
+            }
+        }
+    }
+
+    private fun optimizeVideoStorage(limitMb: Long) {
+        val sizeLimit = if (limitMb <= 0L) 0L else limitMb * 1024L * 1024L
+        client?.send(TdApi.OptimizeStorage().also { req ->
+            req.size = sizeLimit
+            req.ttl = 0
+            req.count = 0
+            req.immunityDelay = 1800 // 30 mins cooldown to prevent deleting currently playing video chunks
+            req.fileTypes = arrayOf(
+                TdApi.FileTypeVideo(),
+                TdApi.FileTypeVideoNote(),
+                TdApi.FileTypeAudio(),
+                TdApi.FileTypeVoiceNote()
+            )
+            req.chatIds = longArrayOf()
+            req.excludeChatIds = longArrayOf()
+            req.returnDeletedFileStatistics = false
+            req.chatLimit = 0
+        }, null)
+    }
+
     fun optimizeStorage() {
         client?.send(TdApi.OptimizeStorage().also { req ->
             req.size = 0
@@ -327,22 +367,10 @@ object TelegramClient {
             req.count = 0
             req.immunityDelay = 0
             req.fileTypes = arrayOf(
-                TdApi.FileTypeAnimation(),
-                TdApi.FileTypeAudio(),
-                TdApi.FileTypeDocument(),
-                TdApi.FileTypeNone(),
-                TdApi.FileTypePhoto(),
-                TdApi.FileTypeProfilePhoto(),
-                TdApi.FileTypeSecret(),
-                TdApi.FileTypeSecretThumbnail(),
-                TdApi.FileTypeSecure(),
-                TdApi.FileTypeSticker(),
-                TdApi.FileTypeThumbnail(),
-                TdApi.FileTypeUnknown(),
                 TdApi.FileTypeVideo(),
                 TdApi.FileTypeVideoNote(),
-                TdApi.FileTypeVoiceNote(),
-                TdApi.FileTypeWallpaper()
+                TdApi.FileTypeAudio(),
+                TdApi.FileTypeVoiceNote()
             )
             req.chatIds = longArrayOf()
             req.excludeChatIds = longArrayOf()
