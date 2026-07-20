@@ -313,7 +313,7 @@ object TelegramStreamingProxy {
                         req.synchronous = false
                     })
                 }
-                activeDownloadEnd = if (tdlibPrefetch == 0L) totalSize else alignedOffset + tdlibPrefetch
+                activeDownloadEnd = if (tdlibPrefetch == 0L) Long.MAX_VALUE else alignedOffset + tdlibPrefetch
             }
 
             val bytes = downloadChunk(fileId, offset, chunkSize)

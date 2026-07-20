@@ -28,6 +28,11 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
         mainContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             padding = 24
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#161616"))
+                val radius = dp(context, 20).toFloat()
+                cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+            }
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -36,9 +41,9 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
 
         val titleView = TextView(context).apply {
             text = "Telegram Extension Settings"
-            textSize = 20f
+            textSize = 22f
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#2AABEE"))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -91,20 +96,23 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 val currentApiHash = TelegramRepository.getApiHash(context)
 
                 val apiIdInput = EditText(context).apply {
+                    styleEditText(this)
                     inputType = InputType.TYPE_CLASS_NUMBER
                     hint = "API ID (e.g. 1234567)"
                     if (currentApiId != 0) setText(currentApiId.toString())
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                     setHintTextColor(Color.GRAY)
                 }
                 val apiHashInput = EditText(context).apply {
+                    styleEditText(this)
                     inputType = InputType.TYPE_CLASS_TEXT
                     hint = "API Hash (e.g. 0123456789abcdef)"
                     setText(currentApiHash)
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                     setHintTextColor(Color.GRAY)
                 }
                 val btn = Button(context).apply {
+                    styleButton(this)
                     text = "Save and Login"
                     setOnClickListener {
                         val idStr = apiIdInput.text.toString().trim()
@@ -128,7 +136,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
             is TelegramAuthState.Initializing -> {
                 val tv = TextView(context).apply {
                     text = "Initializing TDLib..."
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                 }
                 val p = ProgressBar(context)
                 formContainer.addView(tv, layoutParams)
@@ -138,15 +146,17 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
             is TelegramAuthState.WaitPhone -> {
                 val tv = TextView(context).apply {
                     text = "Enter Phone Number (e.g. +1234567890):"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                 }
                 val et = EditText(context).apply {
+                    styleEditText(this)
                     inputType = InputType.TYPE_CLASS_PHONE
                     hint = "+1234567890"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                     setHintTextColor(Color.GRAY)
                 }
                 val btn = Button(context).apply {
+                    styleButton(this)
                     text = "Submit Phone"
                     setOnClickListener {
                         val phone = et.text.toString().trim()
@@ -164,22 +174,24 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
             is TelegramAuthState.WaitQr -> {
                 val tv = TextView(context).apply {
                     text = "QR Code login is requested. Link: ${state.link}"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                 }
                 formContainer.addView(tv, layoutParams)
             }
             is TelegramAuthState.WaitCode -> {
                 val tv = TextView(context).apply {
                     text = "Enter the SMS/App authentication code (length: ${state.codeLength}):"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                 }
                 val et = EditText(context).apply {
+                    styleEditText(this)
                     inputType = InputType.TYPE_CLASS_NUMBER
                     hint = "Code"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                     setHintTextColor(Color.GRAY)
                 }
                 val btn = Button(context).apply {
+                    styleButton(this)
                     text = "Submit Code"
                     setOnClickListener {
                         val code = et.text.toString().trim()
@@ -191,6 +203,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                     }
                 }
                 val resetBtn = Button(context).apply {
+                    styleButton(this)
                     text = "Wrong number? Go Back"
                     setOnClickListener {
                         TelegramRepository.disconnect(context)
@@ -204,15 +217,17 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
             is TelegramAuthState.WaitPassword -> {
                 val tv = TextView(context).apply {
                     text = "Enter Two-Step Verification Password:"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                 }
                 val et = EditText(context).apply {
+                    styleEditText(this)
                     inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
                     hint = "Password"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                     setHintTextColor(Color.GRAY)
                 }
                 val btn = Button(context).apply {
+                    styleButton(this)
                     text = "Submit Password"
                     setOnClickListener {
                         val pass = et.text.toString().trim()
@@ -224,6 +239,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                     }
                 }
                 val resetBtn = Button(context).apply {
+                    styleButton(this)
                     text = "Forgot password / Go Back"
                     setOnClickListener {
                         TelegramRepository.disconnect(context)
@@ -244,21 +260,23 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 // Catalogue channels configuration
                 val channelsLabel = TextView(context).apply {
                     text = "Custom Catalogue Channels (comma-separated usernames or IDs):"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                 }
 
                 val currentChannels = TelegramRepository.getCustomChannels(context).joinToString(", ")
 
                 val channelsInput = EditText(context).apply {
+                    styleEditText(this)
                     inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
                     minLines = 2
                     hint = "@my_channel, -1001234567"
                     setText(currentChannels)
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                     setHintTextColor(Color.GRAY)
                 }
 
                 val btnSaveChannels = Button(context).apply {
+                    styleButton(this)
                     text = "Save Catalogue Channels"
                     setOnClickListener {
                         val input = channelsInput.text.toString()
@@ -288,19 +306,21 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
 
                 val cacheLimitLabel = TextView(context).apply {
                     text = "Cache Limit in MB (0 = No Cache, -1 = No Limit):"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                 }
 
                 val currentLimit = TelegramRepository.getCacheLimitMb(context)
                 val cacheLimitInput = EditText(context).apply {
+                    styleEditText(this)
                     inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
                     hint = "1"
                     setText(currentLimit.toString())
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#E0E0E0"))
                     setHintTextColor(Color.GRAY)
                 }
 
                 val btnSaveCacheLimit = Button(context).apply {
+                    styleButton(this)
                     text = "Save Cache Limit"
                     setOnClickListener {
                         val limitStr = cacheLimitInput.text.toString().trim()
@@ -312,24 +332,67 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 }
 
                 val bufferLimitLabel = TextView(context).apply {
-                    text = "Buffer Size in MB (0 = No prefetch, -1 = Unlimited):"
-                    setTextColor(Color.WHITE)
+                    text = "Buffer Size:"
+                    setTextColor(Color.parseColor("#E0E0E0"))
                 }
 
                 val currentBuffer = TelegramRepository.getBufferSizeMb(context)
+
+                val radioGroup = RadioGroup(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                }
+
+                val radioUnlimited = RadioButton(context).apply {
+                    styleButton(this)
+                    text = "Unlimited"
+                    setTextColor(Color.parseColor("#E0E0E0"))
+                    id = View.generateViewId()
+                }
+
+                val radioCustom = RadioButton(context).apply {
+                    styleButton(this)
+                    text = "Custom"
+                    setTextColor(Color.parseColor("#E0E0E0"))
+                    id = View.generateViewId()
+                }
+
+                radioGroup.addView(radioUnlimited)
+                radioGroup.addView(radioCustom)
+
                 val bufferLimitInput = EditText(context).apply {
+                    styleEditText(this)
                     inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
-                    hint = "20"
-                    setText(currentBuffer.toString())
-                    setTextColor(Color.WHITE)
+                    hint = "Buffer Size in MB (e.g. 20)"
+                    setText(if (currentBuffer <= 0) "20" else currentBuffer.toString())
+                    setTextColor(Color.parseColor("#E0E0E0"))
                     setHintTextColor(Color.GRAY)
+                    visibility = if (currentBuffer == -1L) View.GONE else View.VISIBLE
+                }
+
+                if (currentBuffer == -1L) {
+                    radioUnlimited.isChecked = true
+                } else {
+                    radioCustom.isChecked = true
+                }
+
+                radioGroup.setOnCheckedChangeListener { _, checkedId ->
+                    if (checkedId == radioUnlimited.id) {
+                        bufferLimitInput.visibility = View.GONE
+                    } else {
+                        bufferLimitInput.visibility = View.VISIBLE
+                    }
                 }
 
                 val btnSaveBufferLimit = Button(context).apply {
+                    styleButton(this)
                     text = "Save Buffer Size"
                     setOnClickListener {
-                        val limitStr = bufferLimitInput.text.toString().trim()
-                        val limit = limitStr.toLongOrNull() ?: 20L
+                        val limit = if (radioUnlimited.isChecked) {
+                            -1L
+                        } else {
+                            val limitStr = bufferLimitInput.text.toString().trim()
+                            limitStr.toLongOrNull() ?: 20L
+                        }
                         TelegramRepository.saveBufferSizeMb(context, limit)
                         TelegramStreamingProxy.prefetchSizeMb = limit
                         Toast.makeText(context, "Buffer size saved!", Toast.LENGTH_SHORT).show()
@@ -346,6 +409,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 }
 
                 val btnClearCache = Button(context).apply {
+                    styleButton(this)
                     text = "Clear Cache"
                     setOnClickListener {
                         TelegramRepository.clearCache(context)
@@ -355,6 +419,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 }
 
                 val btnLogout = Button(context).apply {
+                    styleButton(this)
                     text = "Disconnect / Logout"
                     setOnClickListener {
                         TelegramRepository.disconnect(context)
@@ -369,6 +434,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 formContainer.addView(cacheLimitInput, layoutParams)
                 formContainer.addView(btnSaveCacheLimit, layoutParams)
                 formContainer.addView(bufferLimitLabel, layoutParams)
+                formContainer.addView(radioGroup, layoutParams)
                 formContainer.addView(bufferLimitInput, layoutParams)
                 formContainer.addView(btnSaveBufferLimit, layoutParams)
                 formContainer.addView(cacheText, layoutParams)
@@ -382,6 +448,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                     setTypeface(null, android.graphics.Typeface.BOLD)
                 }
                 val btn = Button(context).apply {
+                    styleButton(this)
                     text = "Retry"
                     setOnClickListener {
                         TelegramRepository.disconnect(context)
@@ -398,7 +465,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
     private fun addDetailedLogView(context: Context, layoutParams: LinearLayout.LayoutParams) {
         val logTitle = TextView(context).apply {
             text = "Detailed Initialization Log:"
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#E0E0E0"))
             setTypeface(null, android.graphics.Typeface.BOLD)
         }
 
@@ -430,6 +497,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
         }
 
         val refreshButton = Button(context).apply {
+                    styleButton(this)
             text = "Refresh Log"
             setOnClickListener {
                 logTv.text = TelegramClient.readDetailedInitLog(context)
@@ -437,6 +505,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
         }
 
         val copyButton = Button(context).apply {
+                    styleButton(this)
             text = "Copy All Logs"
             setOnClickListener {
                 val allLogs = TelegramClient.readAllDetailedInitLog(context)
@@ -459,6 +528,30 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
         formContainer.addView(helperText, layoutParams)
         formContainer.addView(scroll)
         formContainer.addView(btnRow, layoutParams)
+    }
+
+
+    private fun styleButton(btn: Button) {
+        btn.background = android.graphics.drawable.GradientDrawable().apply {
+            colors = intArrayOf(Color.parseColor("#2AABEE"), Color.parseColor("#229ED9"))
+            orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
+            cornerRadius = 24f
+        }
+        btn.setTextColor(Color.parseColor("#E0E0E0"))
+        btn.setTypeface(null, android.graphics.Typeface.BOLD)
+        btn.setPadding(32, 24, 32, 24)
+        btn.isAllCaps = false
+    }
+
+    private fun styleEditText(et: EditText) {
+        et.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(Color.parseColor("#252525"))
+            cornerRadius = 16f
+            setStroke(2, Color.parseColor("#353535"))
+        }
+        et.setTextColor(Color.parseColor("#E0E0E0"))
+        et.setHintTextColor(Color.parseColor("#888888"))
+        et.setPadding(32, 32, 32, 32)
     }
 
     private fun dp(context: Context, value: Int): Int {
