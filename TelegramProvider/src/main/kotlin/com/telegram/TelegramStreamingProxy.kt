@@ -322,8 +322,9 @@ object TelegramStreamingProxy {
                         req.synchronous = false
                     })
                 }
-                // Re-assert our Download intent every 20MB for unlimited buffer to prevent stalls
-                activeDownloadEnd = if (tdlibPrefetch == 0L) alignedOffset + (20L * 1024 * 1024) else alignedOffset + tdlibPrefetch
+                // In unlimited mode, TDLib will download the whole file in the background.
+                // We must not re-assert DownloadFile with a new offset, otherwise TDLib restarts the download and drops its cache!
+                activeDownloadEnd = if (tdlibPrefetch == 0L) Long.MAX_VALUE else alignedOffset + tdlibPrefetch
             }
 
             val bytes = downloadChunk(fileId, offset, chunkSize)
