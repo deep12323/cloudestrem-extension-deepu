@@ -424,6 +424,26 @@ object TelegramStreamingProxy {
                     return@withTimeoutOrNull finalData?.data
                 }
                 
+                if (attempts > 0 && attempts % 20 == 0) {
+                    // Starvation detected (2 seconds with no data).
+                    // Re-assert our DownloadFile priority because another concurrent stream (e.g. audio vs video) might have hijacked TDLib.
+                    val tdlibPrefetch = when {
+                        prefetchSizeMb == -1L -> 0L
+                        prefetchSizeMb <= 0L -> limit.toLong()
+                        else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
+                    }
+                    val alignedOffset = offset - (offset % (1024 * 1024))
+                    runCatching {
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = fileId
+                            req.priority = 32
+                            req.offset = alignedOffset
+                            req.limit = tdlibPrefetch
+                            req.synchronous = false
+                        })
+                    }
+                }
+                
                 delay(POLL_INTERVAL_MS)
                 attempts++
             }
