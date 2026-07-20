@@ -53,6 +53,16 @@ object GoogleDriveRepository {
     fun getClientSecret(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CLIENT_SECRET, "") ?: ""
     fun getRefreshToken(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_REFRESH_TOKEN, "") ?: ""
 
+    fun isAuthenticated(context: Context): Boolean = getRefreshToken(context).isNotBlank()
+
+    fun logout(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove(KEY_REFRESH_TOKEN)
+            .apply()
+        currentAccessToken = null
+        tokenExpiry = 0
+    }
+
     fun saveClientIdSecret(context: Context, clientId: String, clientSecret: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_CLIENT_ID, clientId)
