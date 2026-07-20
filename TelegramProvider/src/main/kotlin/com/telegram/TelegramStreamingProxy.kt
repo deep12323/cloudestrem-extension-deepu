@@ -79,7 +79,7 @@ object TelegramStreamingProxy {
 
             val queryStrAll = path.substringAfter("?", "")
             val token = queryStrAll.split("&").find { it.startsWith("token=") }?.substringAfter("=")
-            if (token != authToken || authToken.isEmpty()) {
+            if (authToken.isNotEmpty() && token != null && token != authToken) {
                 val output = socket.getOutputStream()
                 output.write("HTTP/1.1 403 Forbidden\r\n\r\n".toByteArray())
                 output.close()
@@ -424,10 +424,10 @@ object TelegramStreamingProxy {
                     return@withTimeoutOrNull finalData?.data
                 }
                 
-                if (attempts % 5 == 0) {
-                    // Starvation or uncached chunk detected.
-                    // Re-assert our DownloadFile priority immediately on attempt 0 (0ms delay) and every 500ms (5 * 100ms)
-                    // so TDLib focuses on fetching the exact byte offset ExoPlayer needs right now.
+                if (attempts > 0 && attempts % 50 == 0) {
+                    // Starvation detected (5 seconds with no data).
+                    // Only re-assert after 5 seconds so active TDLib downloads are not interrupted mid-download,
+                    // restoring full unthrottled maximum download speed (v95 speed).
                     val tdlibPrefetch = when {
                         prefetchSizeMb == -1L -> 0L
                         prefetchSizeMb <= 0L -> limit.toLong()
