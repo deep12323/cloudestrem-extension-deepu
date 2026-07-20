@@ -182,7 +182,7 @@ class TelegramProvider : MainAPI() {
                 val sizeStr = formatBytes(size)
 
                 newEpisode(episodeUrl) {
-                    this.name = "E$epNum: $cleanEpName ($sizeStr)"
+                    this.name = "$cleanEpName ($sizeStr)"
                     this.data = episodeUrl
                     this.season = 1
                     this.episode = epNum
@@ -275,6 +275,8 @@ class TelegramProvider : MainAPI() {
 
     private fun cleanTitle(rawName: String): String {
         var name = rawName.substringBeforeLast('.')
+        name = name.replace(Regex("(?i)[\\._\\-\\s]*[Ss]\\d{1,2}[Ee]\\d{1,4}.*"), "")
+        name = name.replace(Regex("(?i)[\\._\\-\\s]+[Ee][Pp]?\\d{1,4}([\\._\\-\\s]|$).*"), "")
         val tags = listOf(
             "1080p", "720p", "480p", "2160p", "4k", "uhd", "fhd", "hd", "sd",
             "hevc", "x265", "x264", "h264", "h265", "web-dl", "webrip", "bluray", "hdrip", "brrip",
