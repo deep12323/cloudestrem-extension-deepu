@@ -107,7 +107,8 @@ class TelegramProvider : MainAPI() {
             
             val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
             val qual = parseSearchQuality(name, msg.caption, size)
-            val displayTitle = cleanTitle(name)
+            val sizeStr = formatBytes(size)
+            val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]" else cleanTitle(name)
             
             newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                 this.posterUrl = poster
@@ -138,7 +139,8 @@ class TelegramProvider : MainAPI() {
                 
                 val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 val qual = parseSearchQuality(name, msg.caption, size)
-                val displayTitle = cleanTitle(name)
+                val sizeStr = formatBytes(size)
+                val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]" else cleanTitle(name)
                 
                 newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                     this.posterUrl = poster
