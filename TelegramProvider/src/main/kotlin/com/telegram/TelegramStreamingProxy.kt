@@ -177,19 +177,23 @@ object TelegramStreamingProxy {
                     if (count <= 0) {
                         synchronized(activeStreams) { activeStreams.remove(fileId) }
                         
-                        // Immediately stop background downloading to save data
+                        // Immediately stop background downloading to save data, UNLESS unlimited buffering is on
                         scope.launch {
-                            runCatching {
-                                TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
-                                    req.fileId = fileId
-                                    req.onlyIfPending = false
-                                })
+                            if (prefetchSizeMb != -1L && (activeStreams[fileId] ?: 0) <= 0) {
+                                runCatching {
+                                    TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
+                                        req.fileId = fileId
+                                        req.onlyIfPending = false
+                                    })
+                                }
                             }
                         }
                         
                         scope.launch {
                             delay(30_000)
-                            if ((activeStreams[fileId] ?: 0) <= 0) {
+                            // If unlimited, do not delete the file when paused, keep it cached for resume.
+                            // It will be deleted when a new video starts.
+                            if (prefetchSizeMb != -1L && (activeStreams[fileId] ?: 0) <= 0) {
                                 deleteFile(fileId)
                             }
                         }
