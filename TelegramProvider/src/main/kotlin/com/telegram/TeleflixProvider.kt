@@ -34,11 +34,11 @@ class TeleflixProvider : MainAPI() {
 
         val items = catalog.metas.map { meta ->
             val isMovie = meta.type == "movie"
-            val qual = parseSearchQuality(meta.name)
+            val qual = parseSearchQuality(meta.name, meta.description ?: "")
 
             newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
-                if (qual != null) this.quality = qual
+                this.quality = qual
             }
         }
 
@@ -58,11 +58,11 @@ class TeleflixProvider : MainAPI() {
 
         val all = (movies + series).map { meta ->
             val isMovie = meta.type == "movie"
-            val qual = parseSearchQuality(meta.name)
+            val qual = parseSearchQuality(meta.name, meta.description ?: "")
 
             newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
-                if (qual != null) this.quality = qual
+                this.quality = qual
             }
         }
 
@@ -198,16 +198,16 @@ class TeleflixProvider : MainAPI() {
         return true
     }
 
-    private fun parseSearchQuality(name: String): SearchQuality? {
-        val lower = name.lowercase()
+    private fun parseSearchQuality(name: String, description: String = ""): SearchQuality {
+        val text = "$name $description".lowercase()
         return when {
-            lower.contains("2160") || lower.contains("4k") || lower.contains("uhd") -> SearchQuality.FourK
-            lower.contains("1080") || lower.contains("fhd") -> SearchQuality.HD
-            lower.contains("720") || lower.contains("hd") -> SearchQuality.HD
-            lower.contains("480") || lower.contains("sd") || lower.contains("360p") -> SearchQuality.SD
-            lower.contains("cam") || lower.contains("hdcam") -> SearchQuality.Cam
-            lower.contains("telecine") || lower.contains("hdts") -> SearchQuality.Telecine
-            else -> null
+            text.contains("2160") || text.contains("4k") || text.contains("uhd") -> SearchQuality.FourK
+            text.contains("1080") || text.contains("fhd") -> SearchQuality.HD
+            text.contains("720") || text.contains("hd") -> SearchQuality.HD
+            text.contains("480") || text.contains("sd") || text.contains("360p") -> SearchQuality.SD
+            text.contains("cam") || text.contains("hdcam") -> SearchQuality.Cam
+            text.contains("telecine") || text.contains("hdts") -> SearchQuality.Telecine
+            else -> SearchQuality.HD
         }
     }
 

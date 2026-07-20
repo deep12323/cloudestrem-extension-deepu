@@ -58,7 +58,7 @@ class TelegramProvider : MainAPI() {
                 val qual = parseSearchQuality(topicData.displayName)
                 newTvSeriesSearchResponse(topicData.displayName, url, TvType.TvSeries) {
                     this.posterUrl = poster
-                    if (qual != null) this.quality = qual
+                    this.quality = qual
                 }
             }
 
@@ -106,12 +106,12 @@ class TelegramProvider : MainAPI() {
             val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
             
             val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-            val qual = parseSearchQuality(name)
+            val qual = parseSearchQuality(name, msg.caption, size)
             val displayTitle = cleanTitle(name)
             
             newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                 this.posterUrl = poster
-                if (qual != null) this.quality = qual
+                this.quality = qual
             }
         }
 
@@ -137,12 +137,12 @@ class TelegramProvider : MainAPI() {
                 val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
                 
                 val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-                val qual = parseSearchQuality(name)
+                val qual = parseSearchQuality(name, msg.caption, size)
                 val displayTitle = cleanTitle(name)
                 
                 newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                     this.posterUrl = poster
-                    if (qual != null) this.quality = qual
+                    this.quality = qual
                 }
         }
     }
@@ -244,16 +244,19 @@ class TelegramProvider : MainAPI() {
         return true
     }
 
-    private fun parseSearchQuality(name: String): SearchQuality? {
-        val lower = name.lowercase()
+    private fun parseSearchQuality(name: String, caption: String = "", fileSize: Long = 0L): SearchQuality {
+        val text = "$name $caption".lowercase()
         return when {
-            lower.contains("2160") || lower.contains("4k") || lower.contains("uhd") -> SearchQuality.FourK
-            lower.contains("1080") || lower.contains("fhd") -> SearchQuality.HD
-            lower.contains("720") || lower.contains("hd") -> SearchQuality.HD
-            lower.contains("480") || lower.contains("sd") || lower.contains("360p") -> SearchQuality.SD
-            lower.contains("cam") || lower.contains("hdcam") -> SearchQuality.Cam
-            lower.contains("telecine") || lower.contains("hdts") -> SearchQuality.Telecine
-            else -> null
+            text.contains("2160") || text.contains("4k") || text.contains("uhd") -> SearchQuality.FourK
+            text.contains("1080") || text.contains("fhd") -> SearchQuality.HD
+            text.contains("720") || text.contains("hd") -> SearchQuality.HD
+            text.contains("480") || text.contains("sd") || text.contains("360p") -> SearchQuality.SD
+            text.contains("cam") || text.contains("hdcam") -> SearchQuality.Cam
+            text.contains("telecine") || text.contains("hdts") -> SearchQuality.Telecine
+            fileSize >= 3_500_000_000L -> SearchQuality.FourK
+            fileSize >= 600_000_000L -> SearchQuality.HD
+            fileSize > 0L -> SearchQuality.SD
+            else -> SearchQuality.HD
         }
     }
 
