@@ -34,8 +34,16 @@ class TeleflixProvider : MainAPI() {
 
         val items = catalog.metas.map { meta ->
             val isMovie = meta.type == "movie"
+            val ratingFloat = (meta.imdbRating ?: meta.rating)?.toFloatOrNull()
+            val ratingInt = ratingFloat?.let { (it * 1000).toInt() }
+            val qual = parseSearchQuality(meta.name)
+            val dub = parseDubStatus(meta.name, meta.description ?: "")
+
             newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
+                if (ratingInt != null) this.rating = ratingInt
+                if (qual != null) this.quality = qual
+                if (dub.isNotEmpty()) this.dubStatus = dub
             }
         }
 
@@ -55,8 +63,16 @@ class TeleflixProvider : MainAPI() {
 
         val all = (movies + series).map { meta ->
             val isMovie = meta.type == "movie"
+            val ratingFloat = (meta.imdbRating ?: meta.rating)?.toFloatOrNull()
+            val ratingInt = ratingFloat?.let { (it * 1000).toInt() }
+            val qual = parseSearchQuality(meta.name)
+            val dub = parseDubStatus(meta.name, meta.description ?: "")
+
             newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
+                if (ratingInt != null) this.rating = ratingInt
+                if (qual != null) this.quality = qual
+                if (dub.isNotEmpty()) this.dubStatus = dub
             }
         }
 
@@ -82,19 +98,23 @@ class TeleflixProvider : MainAPI() {
         if (meta == null) throw ErrorLoadingException("Failed to load metadata")
         
         val isSeries = meta.type == "series"
+        val ratingFloat = (meta.imdbRating ?: meta.rating)?.toFloatOrNull()
+        val ratingInt = ratingFloat?.let { (it * 1000).toInt() }
 
         if (isSeries) {
             val episodes = meta.videos?.map { video ->
                 val season = video.season ?: 1
                 val ep = video.episode ?: 1
+                val epTitle = video.title?.takeIf { it.isNotBlank() } ?: "Episode $ep"
                 // We pass a custom data string to loadLinks containing the show name and episode
                 val data = "${meta.name} S${season.toString().padStart(2, '0')}E${ep.toString().padStart(2, '0')}"
-                newEpisode(video.title ?: "Episode $ep") {
-                    this.name = video.title ?: "Episode $ep"
+                newEpisode(epTitle) {
+                    this.name = "S${season}E${ep}: $epTitle"
                     this.data = data
                     this.season = season
                     this.episode = ep
                     this.posterUrl = video.thumbnail ?: meta.poster
+                    this.description = "Season $season Episode $ep"
                 }
             } ?: emptyList()
 
@@ -103,6 +123,8 @@ class TeleflixProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
+                if (ratingInt != null) this.rating = ratingInt
+                this.tags = meta.genres
             }
         } else {
             return newMovieLoadResponse(meta.name, url, TvType.Movie, meta.name) {
@@ -110,6 +132,8 @@ class TeleflixProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
+                if (ratingInt != null) this.rating = ratingInt
+                this.tags = meta.genres
             }
         }
     }
@@ -188,6 +212,30 @@ class TeleflixProvider : MainAPI() {
         return true
     }
 
+    private fun parseSearchQuality(name: String): SearchQuality? {
+        val lower = name.lowercase()
+        return when {
+            lower.contains("2160") || lower.contains("4k") || lower.contains("uhd") -> SearchQuality.FourK
+            lower.contains("1080") || lower.contains("fhd") -> SearchQuality.HD
+            lower.contains("720") || lower.contains("hd") -> SearchQuality.HD
+            lower.contains("480") || lower.contains("sd") || lower.contains("360p") -> SearchQuality.SD
+            lower.contains("cam") || lower.contains("hdcam") -> SearchQuality.Cam
+            lower.contains("telecine") || lower.contains("hdts") -> SearchQuality.Telecine
+            else -> null
+        }
+    }
+
+    private fun parseDubStatus(name: String, textContent: String = ""): Set<DubStatus> {
+        val text = "$name $textContent".lowercase()
+        val isDub = listOf("dub", "dubbed", "dual", "multi", "hindi", "tamil", "telugu", "malayalam", "kannada", "bengali", "marathi", "audio").any { text.contains(it) }
+        val isSub = listOf("sub", "subbed", "esub", "msub", "subtitles", "english sub", "softsub", "hardsub", "srt").any { text.contains(it) }
+
+        val set = mutableSetOf<DubStatus>()
+        if (isDub) set.add(DubStatus.Dubbed)
+        if (isSub) set.add(DubStatus.Subbed)
+        return set
+    }
+
     private fun getQualityFromName(name: String): Int {
         val lower = name.lowercase()
         return when {
@@ -211,6 +259,9 @@ class TeleflixProvider : MainAPI() {
         val background: String?,
         val description: String?,
         val year: String?,
+        val imdbRating: String? = null,
+        val rating: String? = null,
+        val genres: List<String>? = null,
         val videos: List<CinemetaVideo>? = null
     )
 

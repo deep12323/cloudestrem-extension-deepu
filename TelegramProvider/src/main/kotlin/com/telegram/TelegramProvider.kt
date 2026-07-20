@@ -55,8 +55,12 @@ class TelegramProvider : MainAPI() {
                 } else {
                     "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 }
+                val qual = parseSearchQuality(topicData.displayName)
+                val dub = parseDubStatus(topicData.displayName)
                 newTvSeriesSearchResponse(topicData.displayName, url, TvType.TvSeries) {
                     this.posterUrl = poster
+                    if (qual != null) this.quality = qual
+                    if (dub.isNotEmpty()) this.dubStatus = dub
                 }
             }
 
@@ -104,9 +108,14 @@ class TelegramProvider : MainAPI() {
             val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
             
             val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+            val qual = parseSearchQuality(name)
+            val dub = parseDubStatus(name, msg.caption)
+            val displayTitle = cleanTitle(name)
             
-            newMovieSearchResponse(name, url, TvType.Movie) {
+            newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                 this.posterUrl = poster
+                if (qual != null) this.quality = qual
+                if (dub.isNotEmpty()) this.dubStatus = dub
             }
         }
 
@@ -132,9 +141,14 @@ class TelegramProvider : MainAPI() {
                 val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
                 
                 val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                val qual = parseSearchQuality(name)
+                val dub = parseDubStatus(name, msg.caption)
+                val displayTitle = cleanTitle(name)
                 
-                newMovieSearchResponse(name, url, TvType.Movie) {
+                newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                     this.posterUrl = poster
+                    if (qual != null) this.quality = qual
+                    if (dub.isNotEmpty()) this.dubStatus = dub
                 }
         }
     }
@@ -167,13 +181,17 @@ class TelegramProvider : MainAPI() {
                 val thumbId = msg.thumbnailFileId?.toString() ?: ""
                 val episodeUrl = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
                 val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                val epNum = index + 1
+                val cleanEpName = cleanTitle(name)
+                val sizeStr = formatBytes(size)
 
                 newEpisode(episodeUrl) {
-                    this.name = name
+                    this.name = "E$epNum: $cleanEpName ($sizeStr)"
                     this.data = episodeUrl
                     this.season = 1
-                    this.episode = index + 1
+                    this.episode = epNum
                     this.posterUrl = poster
+                    this.description = "Episode $epNum • Size: $sizeStr"
                 }
             }
 
@@ -230,6 +248,44 @@ class TelegramProvider : MainAPI() {
         }
         callback(link)
         return true
+    }
+
+    private fun parseSearchQuality(name: String): SearchQuality? {
+        val lower = name.lowercase()
+        return when {
+            lower.contains("2160") || lower.contains("4k") || lower.contains("uhd") -> SearchQuality.FourK
+            lower.contains("1080") || lower.contains("fhd") -> SearchQuality.HD
+            lower.contains("720") || lower.contains("hd") -> SearchQuality.HD
+            lower.contains("480") || lower.contains("sd") || lower.contains("360p") -> SearchQuality.SD
+            lower.contains("cam") || lower.contains("hdcam") -> SearchQuality.Cam
+            lower.contains("telecine") || lower.contains("hdts") -> SearchQuality.Telecine
+            else -> null
+        }
+    }
+
+    private fun parseDubStatus(name: String, caption: String = ""): Set<DubStatus> {
+        val text = "$name $caption".lowercase()
+        val isDub = listOf("dub", "dubbed", "dual", "multi", "hindi", "tamil", "telugu", "malayalam", "kannada", "bengali", "marathi", "audio", "org audio").any { text.contains(it) }
+        val isSub = listOf("sub", "subbed", "esub", "msub", "subtitles", "english sub", "softsub", "hardsub", "srt").any { text.contains(it) }
+
+        val set = mutableSetOf<DubStatus>()
+        if (isDub) set.add(DubStatus.Dubbed)
+        if (isSub) set.add(DubStatus.Subbed)
+        return set
+    }
+
+    private fun cleanTitle(rawName: String): String {
+        var name = rawName.substringBeforeLast('.')
+        val tags = listOf(
+            "1080p", "720p", "480p", "2160p", "4k", "uhd", "fhd", "hd", "sd",
+            "hevc", "x265", "x264", "h264", "h265", "web-dl", "webrip", "bluray", "hdrip", "brrip",
+            "aac", "dts", "ac3", "dd5", "dual", "audio", "hindi", "english", "esub", "msub", "sub"
+        )
+        for (tag in tags) {
+            name = name.replace(Regex("(?i)[\\._\\-\\s]+$tag([\\._\\-\\s]|$).*"), "")
+        }
+        val cleaned = name.replace('.', ' ').replace('_', ' ').trim()
+        return if (cleaned.isNotBlank()) cleaned else rawName
     }
 
     private fun parseQuality(raw: String): Int {
