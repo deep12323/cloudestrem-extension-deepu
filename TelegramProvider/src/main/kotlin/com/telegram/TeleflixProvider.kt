@@ -113,8 +113,7 @@ class TeleflixProvider : MainAPI() {
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
                 if (ratingFloat != null) {
-                    @Suppress("DEPRECATION")
-                    this.rating = (ratingFloat * 1000).toInt()
+                    this.score = com.lagradost.cloudstream3.Score((ratingFloat * 1000).toInt())
                 }
                 this.tags = meta.genres
             }
@@ -125,8 +124,7 @@ class TeleflixProvider : MainAPI() {
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
                 if (ratingFloat != null) {
-                    @Suppress("DEPRECATION")
-                    this.rating = (ratingFloat * 1000).toInt()
+                    this.score = com.lagradost.cloudstream3.Score((ratingFloat * 1000).toInt())
                 }
                 this.tags = meta.genres
             }
