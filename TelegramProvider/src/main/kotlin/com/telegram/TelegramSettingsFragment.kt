@@ -332,41 +332,49 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                 }
 
                 val bufferLimitLabel = TextView(context).apply {
-                    text = "Buffer Size:"
+                    text = "Buffer Size Mode:"
                     setTextColor(Color.parseColor("#E0E0E0"))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
                 }
 
                 val currentBuffer = TelegramRepository.getBufferSizeMb(context)
 
                 val radioGroup = RadioGroup(context).apply {
                     orientation = LinearLayout.HORIZONTAL
+                    setPadding(0, 12, 0, 12)
                 }
 
                 val radioUnlimited = RadioButton(context).apply {
-                    styleButton(this)
                     text = "Unlimited"
                     setTextColor(Color.parseColor("#E0E0E0"))
+                    textSize = 14f
                     id = View.generateViewId()
                 }
 
                 val radioCustom = RadioButton(context).apply {
-                    styleButton(this)
-                    text = "Custom"
+                    text = "Custom (MB)"
                     setTextColor(Color.parseColor("#E0E0E0"))
+                    textSize = 14f
                     id = View.generateViewId()
                 }
 
-                radioGroup.addView(radioUnlimited)
-                radioGroup.addView(radioCustom)
+                val radioParams = RadioGroup.LayoutParams(
+                    RadioGroup.LayoutParams.WRAP_CONTENT,
+                    RadioGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 32, 0)
+                }
+
+                radioGroup.addView(radioUnlimited, radioParams)
+                radioGroup.addView(radioCustom, radioParams)
 
                 val bufferLimitInput = EditText(context).apply {
                     styleEditText(this)
-                    inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
-                    hint = "Buffer Size in MB (e.g. 20)"
+                    inputType = InputType.TYPE_CLASS_NUMBER
+                    hint = "Enter Buffer Size in MB (e.g. 20)"
                     setText(if (currentBuffer <= 0) "20" else currentBuffer.toString())
-                    setTextColor(Color.parseColor("#E0E0E0"))
-                    setHintTextColor(Color.GRAY)
-                    visibility = if (currentBuffer == -1L) View.GONE else View.VISIBLE
+                    isEnabled = (currentBuffer != -1L)
+                    alpha = if (currentBuffer == -1L) 0.5f else 1.0f
                 }
 
                 if (currentBuffer == -1L) {
@@ -377,9 +385,12 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
 
                 radioGroup.setOnCheckedChangeListener { _, checkedId ->
                     if (checkedId == radioUnlimited.id) {
-                        bufferLimitInput.visibility = View.GONE
+                        bufferLimitInput.isEnabled = false
+                        bufferLimitInput.alpha = 0.5f
                     } else {
-                        bufferLimitInput.visibility = View.VISIBLE
+                        bufferLimitInput.isEnabled = true
+                        bufferLimitInput.alpha = 1.0f
+                        bufferLimitInput.requestFocus()
                     }
                 }
 
