@@ -424,9 +424,10 @@ object TelegramStreamingProxy {
                     return@withTimeoutOrNull finalData?.data
                 }
                 
-                if (attempts > 0 && attempts % 20 == 0) {
-                    // Starvation detected (2 seconds with no data).
-                    // Re-assert our DownloadFile priority because another concurrent stream (e.g. audio vs video) might have hijacked TDLib.
+                if (attempts % 5 == 0) {
+                    // Starvation or uncached chunk detected.
+                    // Re-assert our DownloadFile priority immediately on attempt 0 (0ms delay) and every 500ms (5 * 100ms)
+                    // so TDLib focuses on fetching the exact byte offset ExoPlayer needs right now.
                     val tdlibPrefetch = when {
                         prefetchSizeMb == -1L -> 0L
                         prefetchSizeMb <= 0L -> limit.toLong()

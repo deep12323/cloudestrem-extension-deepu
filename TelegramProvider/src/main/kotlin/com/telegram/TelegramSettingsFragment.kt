@@ -326,7 +326,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                         val limitStr = cacheLimitInput.text.toString().trim()
                         val limit = limitStr.toLongOrNull() ?: 1L
                         TelegramRepository.saveCacheLimitMb(context, limit)
-                        TelegramClient.updateCacheLimit(limit)
+                        TelegramClient.updateCacheLimit(context)
                         Toast.makeText(context, "Cache limit saved!", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -395,6 +395,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                         }
                         TelegramRepository.saveBufferSizeMb(context, limit)
                         TelegramStreamingProxy.prefetchSizeMb = limit
+                        TelegramClient.updateCacheLimit(context)
                         Toast.makeText(context, "Buffer size saved!", Toast.LENGTH_SHORT).show()
                     }
                 }

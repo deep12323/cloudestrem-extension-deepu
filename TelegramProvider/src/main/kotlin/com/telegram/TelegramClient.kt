@@ -330,17 +330,22 @@ object TelegramClient {
             // Automatically clean up any orphaned streaming files from previous crashed sessions
             optimizeStorage()
             // After parameters are set, configure cache size limits
-            val limitMb = TelegramRepository.getCacheLimitMb(context)
-            updateCacheLimit(limitMb)
+            updateCacheLimit(context)
             startBackgroundVideoCleaner(context)
         })
     }
     
-    fun updateCacheLimit(limitMb: Long) {
+    fun updateCacheLimit(context: Context) {
+        val cacheMb = TelegramRepository.getCacheLimitMb(context)
+        val bufferMb = TelegramRepository.getBufferSizeMb(context)
+        updateCacheLimit(cacheMb, bufferMb)
+    }
+
+    fun updateCacheLimit(cacheMb: Long, bufferMb: Long = TelegramStreamingProxy.prefetchSizeMb) {
         val tdlibLimit = when {
-            limitMb == -1L -> 0L // 0 means unlimited in TDLib
-            limitMb <= 0L -> 1024L * 1024L * 1L // 1MB for No Cache (can't use 0 because 0 is unlimited)
-            else -> limitMb * 1024L * 1024L
+            cacheMb == -1L || bufferMb == -1L -> 0L // 0 means unlimited in TDLib
+            cacheMb <= 0L && bufferMb <= 0L -> 1024L * 1024L * 1L // 1MB for No Cache (can't use 0 because 0 is unlimited)
+            else -> maxOf(cacheMb, bufferMb) * 1024L * 1024L
         }
         client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(tdlibLimit)), null)
         client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(3600L)), null)
@@ -352,7 +357,12 @@ object TelegramClient {
         scope.launch {
             while (isActive) {
                 delay(30 * 60 * 1000L) // check every 30 minutes
-                val limitMb = TelegramRepository.getCacheLimitMb(context)
+                val cacheMb = TelegramRepository.getCacheLimitMb(context)
+                val bufferMb = TelegramRepository.getBufferSizeMb(context)
+                if (cacheMb == -1L || bufferMb == -1L) {
+                    continue
+                }
+                val limitMb = maxOf(cacheMb, bufferMb)
                 if (limitMb > 0) {
                     optimizeVideoStorage(limitMb)
                 } else if (limitMb <= 0L) {
