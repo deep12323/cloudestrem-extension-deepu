@@ -546,7 +546,7 @@ object TelegramRepository {
 
     fun getCacheLimitMb(context: Context): Long {
         val prefs = context.getSharedPreferences("telegram_plugin_prefs", Context.MODE_PRIVATE)
-        return prefs.getLong("cache_limit_mb", 2048L) // Default to 2048MB (2 GB)
+        return prefs.getLong("cache_limit_mb", 1L) // Default to 1MB (No Cache)
     }
 
     fun saveCacheLimitMb(context: Context, limit: Long) {
