@@ -47,7 +47,7 @@ jobs:
               "language": "en",
               "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/icon.png",
               "apiVersion": 10,
-              "version": 103,
+              "version": 107,
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Stream any media from your Telegram chats and channels on-demand"
@@ -73,6 +73,7 @@ jobs:
           git config --local user.name "GitHub Action"
           git fetch origin
           git checkout -B builds
+          git rm -rf .github/ || true
           cp -r builds/. .
           git add -f repo.json plugins.json *.cs3 || true
           git status
