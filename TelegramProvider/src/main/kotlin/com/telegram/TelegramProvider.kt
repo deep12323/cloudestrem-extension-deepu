@@ -56,11 +56,9 @@ class TelegramProvider : MainAPI() {
                     "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 }
                 val qual = parseSearchQuality(topicData.displayName)
-                val dub = parseDubStatus(topicData.displayName)
                 newTvSeriesSearchResponse(topicData.displayName, url, TvType.TvSeries) {
                     this.posterUrl = poster
                     if (qual != null) this.quality = qual
-                    if (dub.isNotEmpty()) this.dubStatus = dub
                 }
             }
 
@@ -109,13 +107,11 @@ class TelegramProvider : MainAPI() {
             
             val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
             val qual = parseSearchQuality(name)
-            val dub = parseDubStatus(name, msg.caption)
             val displayTitle = cleanTitle(name)
             
             newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                 this.posterUrl = poster
                 if (qual != null) this.quality = qual
-                if (dub.isNotEmpty()) this.dubStatus = dub
             }
         }
 
@@ -142,13 +138,11 @@ class TelegramProvider : MainAPI() {
                 
                 val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 val qual = parseSearchQuality(name)
-                val dub = parseDubStatus(name, msg.caption)
                 val displayTitle = cleanTitle(name)
                 
                 newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                     this.posterUrl = poster
                     if (qual != null) this.quality = qual
-                    if (dub.isNotEmpty()) this.dubStatus = dub
                 }
         }
     }

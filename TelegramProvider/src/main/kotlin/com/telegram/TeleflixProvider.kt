@@ -34,16 +34,11 @@ class TeleflixProvider : MainAPI() {
 
         val items = catalog.metas.map { meta ->
             val isMovie = meta.type == "movie"
-            val ratingFloat = (meta.imdbRating ?: meta.rating)?.toFloatOrNull()
-            val ratingInt = ratingFloat?.let { (it * 1000).toInt() }
             val qual = parseSearchQuality(meta.name)
-            val dub = parseDubStatus(meta.name, meta.description ?: "")
 
             newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
-                if (ratingInt != null) this.rating = ratingInt
                 if (qual != null) this.quality = qual
-                if (dub.isNotEmpty()) this.dubStatus = dub
             }
         }
 
@@ -63,16 +58,11 @@ class TeleflixProvider : MainAPI() {
 
         val all = (movies + series).map { meta ->
             val isMovie = meta.type == "movie"
-            val ratingFloat = (meta.imdbRating ?: meta.rating)?.toFloatOrNull()
-            val ratingInt = ratingFloat?.let { (it * 1000).toInt() }
             val qual = parseSearchQuality(meta.name)
-            val dub = parseDubStatus(meta.name, meta.description ?: "")
 
             newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
-                if (ratingInt != null) this.rating = ratingInt
                 if (qual != null) this.quality = qual
-                if (dub.isNotEmpty()) this.dubStatus = dub
             }
         }
 
@@ -99,7 +89,6 @@ class TeleflixProvider : MainAPI() {
         
         val isSeries = meta.type == "series"
         val ratingFloat = (meta.imdbRating ?: meta.rating)?.toFloatOrNull()
-        val ratingInt = ratingFloat?.let { (it * 1000).toInt() }
 
         if (isSeries) {
             val episodes = meta.videos?.map { video ->
@@ -123,7 +112,7 @@ class TeleflixProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
-                if (ratingInt != null) this.rating = ratingInt
+                if (ratingFloat != null) this.score = ratingFloat.toDouble()
                 this.tags = meta.genres
             }
         } else {
@@ -132,7 +121,7 @@ class TeleflixProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
-                if (ratingInt != null) this.rating = ratingInt
+                if (ratingFloat != null) this.score = ratingFloat.toDouble()
                 this.tags = meta.genres
             }
         }
