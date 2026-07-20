@@ -88,7 +88,6 @@ class TeleflixProvider : MainAPI() {
         if (meta == null) throw ErrorLoadingException("Failed to load metadata")
         
         val isSeries = meta.type == "series"
-        val ratingFloat = (meta.imdbRating ?: meta.rating)?.toFloatOrNull()
 
         if (isSeries) {
             val episodes = meta.videos?.map { video ->
@@ -112,9 +111,6 @@ class TeleflixProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
-                if (ratingFloat != null) {
-                    this.score = com.lagradost.cloudstream3.Score((ratingFloat * 1000).toInt())
-                }
                 this.tags = meta.genres
             }
         } else {
@@ -123,9 +119,6 @@ class TeleflixProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
-                if (ratingFloat != null) {
-                    this.score = com.lagradost.cloudstream3.Score((ratingFloat * 1000).toInt())
-                }
                 this.tags = meta.genres
             }
         }
