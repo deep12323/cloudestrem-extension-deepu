@@ -112,7 +112,10 @@ class TeleflixProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
-                if (ratingFloat != null) this.score = ratingFloat.toDouble()
+                if (ratingFloat != null) {
+                    @Suppress("DEPRECATION")
+                    this.rating = (ratingFloat * 1000).toInt()
+                }
                 this.tags = meta.genres
             }
         } else {
@@ -121,7 +124,10 @@ class TeleflixProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = meta.year?.toIntOrNull()
-                if (ratingFloat != null) this.score = ratingFloat.toDouble()
+                if (ratingFloat != null) {
+                    @Suppress("DEPRECATION")
+                    this.rating = (ratingFloat * 1000).toInt()
+                }
                 this.tags = meta.genres
             }
         }
