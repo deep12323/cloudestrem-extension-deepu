@@ -181,23 +181,21 @@ object TelegramStreamingProxy {
                     if (count <= 0) {
                         synchronized(activeStreams) { activeStreams.remove(fileId) }
                         
-                        // Immediately stop background downloading to save data, UNLESS unlimited buffering is on
-                        scope.launch {
-                            if (prefetchSizeMb != -1L && (activeStreams[fileId] ?: 0) <= 0) {
-                                runCatching {
-                                    TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
-                                        req.fileId = fileId
-                                        req.onlyIfPending = false
-                                    })
-                                }
-                            }
+                        // Immediately stop background downloading to save data
+                        // Always cancel when stream ends — even in unlimited mode, no point downloading
+                        // data for a stream that's gone
+                        runCatching {
+                            TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
+                                req.fileId = fileId
+                                req.onlyIfPending = false
+                            })
                         }
                         
                         scope.launch {
                             delay(30_000)
                             // If cache is enabled, do not delete the file when paused.
-                            // If cache is disabled, delete it after 30 seconds unless unlimited buffer is on.
-                            if (!isCacheEnabled() && prefetchSizeMb != -1L && (activeStreams[fileId] ?: 0) <= 0) {
+                            // If cache is disabled, delete it after 30 seconds.
+                            if (!isCacheEnabled() && (activeStreams[fileId] ?: 0) <= 0) {
                                 deleteFile(fileId)
                             }
                         }
@@ -225,12 +223,9 @@ object TelegramStreamingProxy {
         }
         lastStreamedFileId = fileId
 
-        // Force cancel any active download for this file to ensure TDLib instantly respects our new offset priority
-        // Only do this if we are not in unlimited mode, otherwise it breaks concurrent streams
-        if (prefetchSizeMb != -1L) {
-            runCatching {
-                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-            }
+        // Always cancel any lingering download for this file first so TDLib starts fresh
+        runCatching {
+            TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
         }
 
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
@@ -241,7 +236,7 @@ object TelegramStreamingProxy {
         val totalSize = exactSize ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
         val localPath = fileInfo?.first
         
-        Log.d(TAG, "Streaming fileId=$fileId totalSize=$totalSize range=$rangeHeader")
+        Log.d(TAG, "Streaming fileId=$fileId totalSize=$totalSize range=$rangeHeader prefetchMb=$prefetchSizeMb")
 
         if (totalSize <= 0L) {
             output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
@@ -297,40 +292,58 @@ object TelegramStreamingProxy {
 
         output.write(headers.toByteArray())
 
-        var activeDownloadEnd = -1L
+        val isUnlimited = prefetchSizeMb == -1L
+        // Track whether we have an active download window so we don't re-issue
+        var downloadActive = false
+        var activeWindowStart = -1L
+        var activeWindowEnd = -1L
+
+        // Helper: cancel the current TDLib download and mark inactive
+        suspend fun cancelDownload() {
+            if (!isUnlimited) {
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                }
+            }
+            downloadActive = false
+        }
+
+        // Helper: start a download window from the given offset
+        suspend fun startDownload(fromOffset: Long) {
+            // ALWAYS cancel first to prevent TDLib from accumulating ranges
+            cancelDownload()
+
+            val prefetchBytes = when {
+                isUnlimited -> 0L // 0 = unlimited in TDLib
+                prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
+                else -> prefetchSizeMb * 1024L * 1024L
+            }
+            val alignedOffset = fromOffset - (fromOffset % (1024 * 1024))
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = fileId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = alignedOffset
+                    req.limit = prefetchBytes
+                    req.synchronous = false
+                })
+            }
+            downloadActive = true
+            activeWindowStart = alignedOffset
+            activeWindowEnd = if (prefetchBytes == 0L) Long.MAX_VALUE else alignedOffset + prefetchBytes
+            Log.d(TAG, "Download started: fileId=$fileId offset=$alignedOffset limit=$prefetchBytes windowEnd=$activeWindowEnd")
+        }
+
+        // Issue the initial download
+        startDownload(start)
 
         var offset = start
         while (offset <= end && running) {
             val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
 
-            if (offset >= activeDownloadEnd) {
-                // Cancel previous download range before starting a new one.
-                // Without this, TDLib accumulates successive DownloadFile ranges
-                // and downloads far beyond the configured buffer size.
-                if (prefetchSizeMb != -1L) {
-                    runCatching {
-                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-                    }
-                }
-
-                val tdlibPrefetch = when {
-                    prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
-                    prefetchSizeMb <= 0L -> chunkSize.toLong()
-                    else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
-                }
-                val alignedOffset = offset - (offset % (1024 * 1024))
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = fileId
-                        req.priority = DOWNLOAD_PRIORITY
-                        req.offset = alignedOffset
-                        req.limit = tdlibPrefetch
-                        req.synchronous = false
-                    })
-                }
-                // In unlimited mode, TDLib will download the whole file in the background.
-                // We must not re-assert DownloadFile with a new offset, otherwise TDLib restarts the download and drops its cache!
-                activeDownloadEnd = if (tdlibPrefetch == 0L) Long.MAX_VALUE else alignedOffset + tdlibPrefetch
+            // If we've consumed past the active download window, start a new one
+            if (!isUnlimited && offset >= activeWindowEnd) {
+                startDownload(offset)
             }
 
             val bytes = downloadChunk(fileId, offset, chunkSize)
@@ -339,40 +352,33 @@ object TelegramStreamingProxy {
             output.flush()
             offset += bytes.size
 
-            // Check download window if buffer size is not unlimited
-            if (prefetchSizeMb != -1L) {
+            // Buffer enforcement: pause/resume TDLib download based on how far ahead it is
+            if (!isUnlimited) {
                 val file = try { TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File } catch (e: Exception) { null }
                 val localFile = file?.local
                 if (localFile != null && !localFile.isDownloadingCompleted) {
-                    val prefetchBytes = if (prefetchSizeMb <= 0L) chunkSize.toLong() else prefetchSizeMb * 1024L * 1024L
-                    val absoluteDownloadedEnd = localFile.downloadOffset + localFile.downloadedPrefixSize
-                    
-                    if (localFile.isDownloadingActive) {
-                        if (absoluteDownloadedEnd >= offset + prefetchBytes) {
-                            // Exceeded buffer limit! Pause downloading to save background data.
-                            runCatching {
-                                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-                            }
-                        }
-                    } else {
-                        val resumeThreshold = offset + (prefetchBytes / 2)
-                        if (absoluteDownloadedEnd < resumeThreshold) {
-                            // Dropped below threshold. Resume downloading the next window!
-                            val alignedOffset = offset - (offset % (1024 * 1024))
-                            runCatching {
-                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                    req.fileId = fileId
-                                    req.priority = DOWNLOAD_PRIORITY
-                                    req.offset = alignedOffset
-                                    req.limit = prefetchBytes
-                                    req.synchronous = false
-                                })
-                            }
-                            activeDownloadEnd = alignedOffset + prefetchBytes
-                        }
+                    val prefetchBytes = if (prefetchSizeMb <= 0L) CHUNK_SIZE.toLong() else prefetchSizeMb * 1024L * 1024L
+                    // How far ahead of playback is the downloaded data?
+                    // downloadedPrefixSize = contiguous bytes available from downloadOffset
+                    val downloadedUpTo = localFile.downloadOffset + localFile.downloadedPrefixSize
+                    val aheadOfPlayback = downloadedUpTo - offset
+
+                    if (localFile.isDownloadingActive && aheadOfPlayback >= prefetchBytes) {
+                        // Buffer is full — cancel download to stop wasting bandwidth
+                        Log.d(TAG, "Buffer full: ahead=${aheadOfPlayback}B limit=${prefetchBytes}B, pausing download")
+                        cancelDownload()
+                    } else if (!localFile.isDownloadingActive && aheadOfPlayback < prefetchBytes / 2) {
+                        // Buffer drained below half — resume downloading
+                        Log.d(TAG, "Buffer low: ahead=${aheadOfPlayback}B threshold=${prefetchBytes/2}B, resuming download")
+                        startDownload(offset)
                     }
                 }
             }
+        }
+
+        // Cleanup: cancel download when stream ends (unless unlimited)
+        if (!isUnlimited) {
+            cancelDownload()
         }
     }
 
@@ -467,28 +473,28 @@ object TelegramStreamingProxy {
                 
                 if (attempts > 0 && attempts % 50 == 0) {
                     // Starvation detected (5 seconds with no data).
+                    // Only re-issue a MINIMAL download for the exact chunk needed.
+                    // Do NOT request the full buffer window here — streamFile manages that.
                     val localFile = file?.local
                     val isActive = localFile?.isDownloadingActive == true
                     val isCompleted = localFile?.isDownloadingCompleted == true
                     
+                    Log.d(TAG, "Starvation at offset=$offset, active=$isActive, completed=$isCompleted, attempt=$attempts")
+                    
                     if (!isActive && !isCompleted) {
-                        val tdlibPrefetch = when {
-                            prefetchSizeMb == -1L -> 0L
-                            prefetchSizeMb <= 0L -> limit.toLong()
-                            else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
-                        }
+                        // Download stopped and file isn't complete — nudge TDLib with a small targeted request
                         val alignedOffset = offset - (offset % (1024 * 1024))
-                        if (prefetchSizeMb != -1L) {
-                            runCatching {
-                                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-                            }
+                        // Only request enough for this chunk + a small margin, NOT the full buffer
+                        val targetLimit = minOf(limit.toLong() * 2, CHUNK_SIZE.toLong() * 2)
+                        runCatching {
+                            TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
                         }
                         runCatching {
                             TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                 req.fileId = fileId
                                 req.priority = 32
                                 req.offset = alignedOffset
-                                req.limit = tdlibPrefetch
+                                req.limit = targetLimit
                                 req.synchronous = false
                             })
                         }
