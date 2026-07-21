@@ -97,12 +97,26 @@ object TelegramRepository {
         wipeTdlibFiles(context)
     }
 
-    fun getCacheSize(context: Context): Long {
-        val dir1 = File(context.filesDir, "tdlib_files")
-        val dir2 = File(context.filesDir, "tdlib")
-        val size1 = if (dir1.exists()) dir1.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
-        val size2 = if (dir2.exists()) dir2.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
-        return size1 + size2
+    suspend fun getCacheSize(context: Context): Long {
+        return try {
+            val stats = TelegramClient.sendRequest(TdApi.GetStorageStatisticsFast()) as? TdApi.StorageStatisticsFast
+            val tdlibSize = stats?.filesSize ?: 0L
+            if (tdlibSize > 0L) {
+                tdlibSize
+            } else {
+                val dir1 = File(context.filesDir, "tdlib_files")
+                val dir2 = File(context.filesDir, "tdlib")
+                val size1 = if (dir1.exists()) dir1.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
+                val size2 = if (dir2.exists()) dir2.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
+                size1 + size2
+            }
+        } catch (e: Exception) {
+            val dir1 = File(context.filesDir, "tdlib_files")
+            val dir2 = File(context.filesDir, "tdlib")
+            val size1 = if (dir1.exists()) dir1.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
+            val size2 = if (dir2.exists()) dir2.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
+            size1 + size2
+        }
     }
 
     fun clearCache(context: Context) {

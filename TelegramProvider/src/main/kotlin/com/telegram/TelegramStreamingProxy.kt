@@ -55,7 +55,11 @@ object TelegramStreamingProxy {
 
     fun stop() {
         running = false
-        lastStreamedFileId?.let { scope.launch { deleteFile(it) } }
+        lastStreamedFileId?.let {
+            if (!isCacheEnabled()) {
+                scope.launch { deleteFile(it) }
+            }
+        }
         lastStreamedFileId = null
         try {
             serverSocket?.close()
@@ -191,9 +195,9 @@ object TelegramStreamingProxy {
                         
                         scope.launch {
                             delay(30_000)
-                            // If unlimited, do not delete the file when paused, keep it cached for resume.
-                            // It will be deleted when a new video starts.
-                            if (prefetchSizeMb != -1L && (activeStreams[fileId] ?: 0) <= 0) {
+                            // If cache is enabled, do not delete the file when paused.
+                            // If cache is disabled, delete it after 30 seconds unless unlimited buffer is on.
+                            if (!isCacheEnabled() && prefetchSizeMb != -1L && (activeStreams[fileId] ?: 0) <= 0) {
                                 deleteFile(fileId)
                             }
                         }
@@ -215,7 +219,9 @@ object TelegramStreamingProxy {
     private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long) {
         val prev = lastStreamedFileId
         if (prev != null && prev != fileId && (activeStreams[prev] ?: 0) <= 0) {
-            scope.launch { deleteFile(prev) }
+            if (!isCacheEnabled()) {
+                scope.launch { deleteFile(prev) }
+            }
         }
         lastStreamedFileId = fileId
 
@@ -478,5 +484,15 @@ object TelegramStreamingProxy {
 
     private fun findFreePort(): Int {
         ServerSocket(0).use { return it.localPort }
+    }
+
+    private fun isCacheEnabled(): Boolean {
+        return try {
+            val context = TelegramRepository.getContext()
+            val cacheLimit = TelegramRepository.getCacheLimitMb(context)
+            cacheLimit > 1L || cacheLimit == -1L
+        } catch (e: Exception) {
+            false
+        }
     }
 }

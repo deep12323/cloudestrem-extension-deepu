@@ -47,7 +47,7 @@ jobs:
               "language": "en",
               "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/icon.png",
               "apiVersion": 10,
-              "version": 119,
+              "version": 120,
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Stream any media from your Telegram chats and channels on-demand"
