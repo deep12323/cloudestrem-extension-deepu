@@ -432,22 +432,31 @@ object TelegramStreamingProxy {
                 
                 if (attempts > 0 && attempts % 50 == 0) {
                     // Starvation detected (5 seconds with no data).
-                    // Only re-assert after 5 seconds so active TDLib downloads are not interrupted mid-download,
-                    // restoring full unthrottled maximum download speed (v95 speed).
-                    val tdlibPrefetch = when {
-                        prefetchSizeMb == -1L -> 0L
-                        prefetchSizeMb <= 0L -> limit.toLong()
-                        else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
-                    }
-                    val alignedOffset = offset - (offset % (1024 * 1024))
-                    runCatching {
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = fileId
-                            req.priority = 32
-                            req.offset = alignedOffset
-                            req.limit = tdlibPrefetch
-                            req.synchronous = false
-                        })
+                    val localFile = file?.local
+                    val isActive = localFile?.isDownloadingActive == true
+                    val isCompleted = localFile?.isDownloadingCompleted == true
+                    
+                    if (!isActive && !isCompleted) {
+                        val tdlibPrefetch = when {
+                            prefetchSizeMb == -1L -> 0L
+                            prefetchSizeMb <= 0L -> limit.toLong()
+                            else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
+                        }
+                        val alignedOffset = offset - (offset % (1024 * 1024))
+                        if (prefetchSizeMb != -1L) {
+                            runCatching {
+                                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                            }
+                        }
+                        runCatching {
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = fileId
+                                req.priority = 32
+                                req.offset = alignedOffset
+                                req.limit = tdlibPrefetch
+                                req.synchronous = false
+                            })
+                        }
                     }
                 }
                 

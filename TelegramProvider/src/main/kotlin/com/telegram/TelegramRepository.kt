@@ -48,8 +48,8 @@ object TelegramRepository {
         TelegramStreamingProxy.prefetchSizeMb = getBufferSizeMb(context)
         TelegramStreamingProxy.start()
         
-        // Only wipe old media cache on startup if the user chose "No Cache" (limit <= 0)
-        if (getCacheLimitMb(context) <= 0L) {
+        // Only wipe old media cache on startup if the user chose "No Cache" (limit <= 1)
+        if (getCacheLimitMb(context) <= 1L) {
             clearCache(context)
         }
 
