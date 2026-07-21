@@ -338,6 +338,41 @@ object TelegramStreamingProxy {
             output.write(bytes)
             output.flush()
             offset += bytes.size
+
+            // Check download window if buffer size is not unlimited
+            if (prefetchSizeMb != -1L) {
+                val file = try { TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File } catch (e: Exception) { null }
+                val localFile = file?.local
+                if (localFile != null && !localFile.isDownloadingCompleted) {
+                    val prefetchBytes = if (prefetchSizeMb <= 0L) chunkSize.toLong() else prefetchSizeMb * 1024L * 1024L
+                    val absoluteDownloadedEnd = localFile.downloadOffset + localFile.downloadedPrefixSize
+                    
+                    if (localFile.isDownloadingActive) {
+                        if (absoluteDownloadedEnd >= offset + prefetchBytes) {
+                            // Exceeded buffer limit! Pause downloading to save background data.
+                            runCatching {
+                                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                            }
+                        }
+                    } else {
+                        val resumeThreshold = offset + (prefetchBytes / 2)
+                        if (absoluteDownloadedEnd < resumeThreshold) {
+                            // Dropped below threshold. Resume downloading the next window!
+                            val alignedOffset = offset - (offset % (1024 * 1024))
+                            runCatching {
+                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                    req.fileId = fileId
+                                    req.priority = DOWNLOAD_PRIORITY
+                                    req.offset = alignedOffset
+                                    req.limit = prefetchBytes
+                                    req.synchronous = false
+                                })
+                            }
+                            activeDownloadEnd = alignedOffset + prefetchBytes
+                        }
+                    }
+                }
+            }
         }
     }
 
