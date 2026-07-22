@@ -408,6 +408,11 @@ object TelegramStreamingProxy {
         val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             var attempts = 0
             while (attempts < 600 && running) {
+                val currentTarget = lastRequestedOffsets[fileId]
+                if (currentTarget != null && currentTarget != alignedOffset) {
+                    ensureDownloadTarget(fileId, alignedOffset, windowSizeBytes)
+                }
+
                 val data = try {
                     TelegramClient.sendRequest(
                         TdApi.ReadFilePart(fileId, offset, limit.toLong())
@@ -430,7 +435,8 @@ object TelegramStreamingProxy {
                     return@withTimeoutOrNull finalData?.data
                 }
                 
-                if (attempts > 0 && attempts % 3 == 0) {
+                // Only force re-assert after 5 seconds (100 attempts * 50ms) of total starvation
+                if (attempts > 0 && attempts % 100 == 0) {
                     ensureDownloadTarget(fileId, alignedOffset, windowSizeBytes, force = true)
                 }
                 
