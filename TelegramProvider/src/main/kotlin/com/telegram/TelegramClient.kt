@@ -327,8 +327,6 @@ object TelegramClient {
                 }
                 return@send
             }
-            // Disable automatic background downloads so TDLib strictly follows proxy requests
-            client?.send(TdApi.SetOption("disable_auto_download", TdApi.OptionValueBoolean(true)), null)
             // Automatically clean up any orphaned streaming files from previous crashed sessions
             optimizeStorage()
             // After parameters are set, configure cache size limits

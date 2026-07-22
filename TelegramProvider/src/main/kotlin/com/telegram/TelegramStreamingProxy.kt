@@ -19,7 +19,7 @@ object TelegramStreamingProxy {
     var prefetchSizeMb = 20L                             // Prefetch window sent to TDLib (dynamically configured)
     private const val DOWNLOAD_TIMEOUT_MS = 30_000L
     private const val DOWNLOAD_PRIORITY = 32              // max TDLib priority
-    private const val POLL_INTERVAL_MS = 100L
+    private const val POLL_INTERVAL_MS = 50L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var port: Int = 0
@@ -216,20 +216,18 @@ object TelegramStreamingProxy {
         }
     }
 
-    private fun ensureDownloadTarget(fileId: Int, alignedOffset: Long, windowSizeBytes: Long, force: Boolean = false) {
+    private suspend fun ensureDownloadTarget(fileId: Int, alignedOffset: Long, windowSizeBytes: Long, force: Boolean = false) {
         val last = lastRequestedOffsets[fileId]
         if (force || last == null || last != alignedOffset) {
             lastRequestedOffsets[fileId] = alignedOffset
-            scope.launch {
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = fileId
-                        req.priority = DOWNLOAD_PRIORITY
-                        req.offset = alignedOffset
-                        req.limit = windowSizeBytes
-                        req.synchronous = false
-                    })
-                }
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = fileId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = alignedOffset
+                    req.limit = windowSizeBytes
+                    req.synchronous = false
+                })
             }
             Log.d(TAG, "Download window set: fileId=$fileId offset=$alignedOffset limit=$windowSizeBytes force=$force")
         }
