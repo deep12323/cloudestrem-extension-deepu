@@ -165,40 +165,53 @@ class TeleflixProvider : MainAPI() {
 
         val targetSeason: Int?
         val targetEpisode: Int?
-        val queries = mutableSetOf<String>()
+        val queries = LinkedHashSet<String>()
 
         if (match != null) {
             targetSeason = match.groupValues[1].toInt()
             targetEpisode = match.groupValues[2].toInt()
-            val baseName = data.substring(0, match.range.first).trim()
+            val rawBaseName = data.substring(0, match.range.first).trim()
+            val cleanBaseName = rawBaseName.replace(Regex("[^a-zA-Z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
+            val compactBaseName = cleanBaseName.replace(" ", "")
+
             val sStr = String.format("%02d", targetSeason)
             val eStr = String.format("%02d", targetEpisode)
 
-            queries.add("$baseName S${sStr}E${eStr}")
-            queries.add("$baseName ${targetSeason}x${eStr}")
-            queries.add("$baseName ${targetSeason}x${targetEpisode}")
-            queries.add("$baseName S${sStr} E${eStr}")
-            queries.add("$baseName Season ${targetSeason} Episode ${targetEpisode}")
-            queries.add("$baseName S${targetSeason}E${targetEpisode}")
-            queries.add("$baseName S${sStr}")
+            // 1. Clean title with standard S01E01 (Highest match rate on Telegram!)
+            queries.add("$cleanBaseName S${sStr}E${eStr}")
+            if (rawBaseName != cleanBaseName) {
+                queries.add("$rawBaseName S${sStr}E${eStr}")
+            }
+
+            // 2. Season packs
+            queries.add("$cleanBaseName S${sStr}")
+            queries.add("$cleanBaseName Season $targetSeason")
+
+            // 3. Compact title
+            if (compactBaseName != cleanBaseName && compactBaseName.length >= 3) {
+                queries.add("$compactBaseName S${sStr}E${eStr}")
+            }
+
+            // 4. Alternative episode numbering
+            queries.add("$cleanBaseName ${targetSeason}x${eStr}")
+            queries.add("$cleanBaseName S${targetSeason}E${targetEpisode}")
         } else {
             targetSeason = null
             targetEpisode = null
-            queries.add(data)
-        }
+            val cleanData = data.replace(Regex("[^a-zA-Z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
+            val compactData = cleanData.replace(" ", "")
 
-        // Punctuation and spacing variations
-        val queriesCopy = queries.toList()
-        val punctRegex = Regex("[^a-zA-Z0-9 ]")
-        for (q in queriesCopy) {
-            if (punctRegex.containsMatchIn(q)) {
-                queries.add(q.replace(punctRegex, " ").replace(Regex(" +"), " ").trim())
-                queries.add(q.replace(punctRegex, ""))
+            queries.add(cleanData)
+            if (cleanData != data) {
+                queries.add(data)
+            }
+            if (compactData != cleanData && compactData.length >= 3) {
+                queries.add(compactData)
             }
         }
         
         val emittedKeys = mutableSetOf<String>()
-        val searchLimit = if (targetSeason != null) 200 else 500
+        val searchLimit = 100
 
         for (q in queries) {
             val res = try {
