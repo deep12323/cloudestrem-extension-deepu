@@ -227,13 +227,8 @@ class TeleflixProvider : MainAPI() {
             throw ErrorLoadingException("No matching streams found on Telegram for '$data'")
         }
 
-        // Group split files and sort strictly by total file size descending (highest to lowest)
-        val items = TelegramRepository.groupAndPreserveOrder(filteredResults).sortedByDescending { item ->
-            when (item) {
-                is DisplayItem.Group -> item.group.totalSize
-                is DisplayItem.Single -> item.message.fileSize
-            }
-        }
+        // Group split files and preserve original search order
+        val items = TelegramRepository.groupAndPreserveOrder(filteredResults)
 
         for (item in items) {
             when (item) {
