@@ -126,33 +126,39 @@ class TeleflixProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data contains the movie name or series query (e.g. "Spider-Man" or "Breaking Bad S01E01")
+        // data contains the movie name or series query (e.g. "Spider-Man" or "Mr. Robot S01E01")
         if (!TelegramRepository.waitUntilAuthenticated()) {
             throw ErrorLoadingException("Please login to Telegram in settings first!")
         }
 
-        val queries = mutableSetOf<String>()
-        queries.add(data)
-        
-        // Multi-search logic: generate variations (e.g. S01E01 -> 1x01)
         val sxxEyyRegex = Regex("(?i)S(\\d{1,2})E(\\d{1,2})")
         val match = sxxEyyRegex.find(data)
+
+        val targetSeason: Int?
+        val targetEpisode: Int?
+        val queries = mutableSetOf<String>()
+
         if (match != null) {
-            val s = match.groupValues[1].toInt()
-            val e = match.groupValues[2].toInt()
+            targetSeason = match.groupValues[1].toInt()
+            targetEpisode = match.groupValues[2].toInt()
             val baseName = data.substring(0, match.range.first).trim()
-            val sStr = String.format("%02d", s)
-            val eStr = String.format("%02d", e)
-            queries.add("$baseName ${s}x$eStr")
-            queries.add("$baseName ${s}x$e")
-            queries.add("$baseName S$sStr E$eStr")
-            queries.add("$baseName Season $s Episode $e")
-            queries.add("$baseName S$s E$e")
-            queries.add(baseName) // Fallback to just the series name
-            queries.add(baseName.replace(" ", "")) // Fallback for BreakingBadS01E01 without spaces
+            val sStr = String.format("%02d", targetSeason)
+            val eStr = String.format("%02d", targetEpisode)
+
+            queries.add("$baseName S${sStr}E${eStr}")
+            queries.add("$baseName ${targetSeason}x${eStr}")
+            queries.add("$baseName ${targetSeason}x${targetEpisode}")
+            queries.add("$baseName S${sStr} E${eStr}")
+            queries.add("$baseName Season ${targetSeason} Episode ${targetEpisode}")
+            queries.add("$baseName S${targetSeason}E${targetEpisode}")
+            queries.add("$baseName S${sStr}")
+        } else {
+            targetSeason = null
+            targetEpisode = null
+            queries.add(data)
         }
 
-        // Punctuation and spacing variations for movies and shows (e.g. Spider-Man -> Spider Man)
+        // Punctuation and spacing variations
         val queriesCopy = queries.toList()
         val punctRegex = Regex("[^a-zA-Z0-9 ]")
         for (q in queriesCopy) {
@@ -162,81 +168,160 @@ class TeleflixProvider : MainAPI() {
             }
         }
         
-        val results = mutableSetOf<TelegramVideoMessage>()
+        val rawResults = mutableSetOf<TelegramVideoMessage>()
         for (q in queries) {
             val res = TelegramRepository.searchVideoMessages(q, limit = 1000, includeAudio = false)
-            results.addAll(res)
+            rawResults.addAll(res)
         }
         
-        if (results.isEmpty()) {
-            throw ErrorLoadingException("No streams found on Telegram for '$data'")
-        }
-
-        // Group split files
-        val (splitGroups, individualFiles) = TelegramRepository.groupSplitFiles(results.toList())
-
-        // Emit merged links for split file groups
-        for (group in splitGroups) {
-            val freshIds = group.parts.map { part ->
-                TelegramRepository.getFreshFileId(part.chatId, part.messageId) ?: part.fileId
+        // Strict filtering for TV Series episodes (supports single episodes, multi-episode ranges e.g. E01-E04, and full season packs)
+        val filteredResults = if (targetSeason != null && targetEpisode != null) {
+            rawResults.filter { msg ->
+                isMatchingEpisode(msg.fileName, msg.caption, targetSeason, targetEpisode)
             }
-            val partSizes = group.parts.map { it.fileSize }
-            val totalSize = partSizes.sum()
-            val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
-            val sizeStr = TelegramProvider.formatBytes(totalSize)
-
-            callback.invoke(
-                newExtractorLink(
-                    source = "Telegram",
-                    name = "\uD83D\uDD17 ${group.baseName} (${group.parts.size} parts, $sizeStr) [SPLIT]",
-                    url = streamUrl,
-                    type = ExtractorLinkType.VIDEO
-                ) {
-                    this.referer = ""
-                    this.quality = getQualityFromName(group.baseName)
-                }
-            )
+        } else {
+            rawResults.toList()
         }
 
-        // Emit individual file links (including ZIP streaming)
-        individualFiles.forEach { msg ->
-            val freshFileId = TelegramRepository.getFreshFileId(msg.chatId, msg.messageId) ?: msg.fileId
-            val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+        if (filteredResults.isEmpty()) {
+            throw ErrorLoadingException("No matching streams found on Telegram for '$data'")
+        }
 
-            if (ext == "zip" && msg.fileSize > 1_000_000) {
-                // ZIP streaming
-                val streamUrl = TelegramRepository.getZipStreamUrl(freshFileId, msg.fileName, msg.fileSize)
-                val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
-                callback.invoke(
-                    newExtractorLink(
-                        source = "Telegram",
-                        name = "\uD83D\uDDC4\uFE0F ${msg.fileName} ($sizeStr) [ZIP]",
-                        url = streamUrl,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = ""
-                        this.quality = getQualityFromName(msg.fileName)
+        // Group split files and preserve order
+        val items = TelegramRepository.groupAndPreserveOrder(filteredResults)
+
+        for (item in items) {
+            when (item) {
+                is DisplayItem.Group -> {
+                    val group = item.group
+                    val freshIds = group.parts.map { part ->
+                        TelegramRepository.getFreshFileId(part.chatId, part.messageId) ?: part.fileId
                     }
-                )
-            } else {
-                // Regular file streaming
-                val streamUrl = TelegramRepository.getStreamUrl(freshFileId, msg.fileName, msg.fileSize)
-                val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
-                callback.invoke(
-                    newExtractorLink(
-                        source = "Telegram",
-                        name = "${msg.fileName} ($sizeStr)",
-                        url = streamUrl,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = ""
-                        this.quality = getQualityFromName(msg.fileName)
+                    val partSizes = group.parts.map { it.fileSize }
+                    val totalSize = partSizes.sum()
+                    val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                    val sizeStr = TelegramProvider.formatBytes(totalSize)
+
+                    callback.invoke(
+                        newExtractorLink(
+                            source = "Telegram",
+                            name = "\uD83D\uDD17 ${group.baseName} (${group.parts.size} parts, $sizeStr) [SPLIT]",
+                            url = streamUrl,
+                            type = ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = ""
+                            this.quality = getQualityFromName(group.baseName)
+                        }
+                    )
+                }
+                is DisplayItem.Single -> {
+                    val msg = item.message
+                    val freshFileId = TelegramRepository.getFreshFileId(msg.chatId, msg.messageId) ?: msg.fileId
+                    val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+
+                    if (ext == "zip" && msg.fileSize > 1_000_000) {
+                        val streamUrl = TelegramRepository.getZipStreamUrl(freshFileId, msg.fileName, msg.fileSize)
+                        val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
+                        callback.invoke(
+                            newExtractorLink(
+                                source = "Telegram",
+                                name = "\uD83D\uDDC4\uFE0F ${msg.fileName} ($sizeStr) [ZIP]",
+                                url = streamUrl,
+                                type = ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = ""
+                                this.quality = getQualityFromName(msg.fileName)
+                            }
+                        )
+                    } else {
+                        val streamUrl = TelegramRepository.getStreamUrl(freshFileId, msg.fileName, msg.fileSize)
+                        val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
+                        callback.invoke(
+                            newExtractorLink(
+                                source = "Telegram",
+                                name = "${msg.fileName} ($sizeStr)",
+                                url = streamUrl,
+                                type = ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = ""
+                                this.quality = getQualityFromName(msg.fileName)
+                            }
+                        )
                     }
-                )
+                }
             }
         }
 
         return true
+    }
+
+    private fun isMatchingEpisode(
+        fileName: String,
+        caption: String,
+        targetSeason: Int,
+        targetEpisode: Int
+    ): Boolean {
+        val text = "$fileName $caption".lowercase()
+        val sNum = targetSeason
+        val eNum = targetEpisode
+        val sStr = String.format("%02d", sNum)
+        val eStr = String.format("%02d", eNum)
+
+        // 1. Check multi-episode range pattern: S01E01-E04, S01E01-04, S1E1-E4, 1x01-1x04, 1x01-04
+        val rangeRegex = Regex("(?i)(?:s(\\d{1,2})[._\\s-]*)?e?(\\d{1,2})[._\\s-]*(?:to|[-~])[._\\s-]*e?(\\d{1,2})|(?:(\\d{1,2})x(\\d{1,2})[._\\s-]*(?:to|[-~])[._\\s-]*(?:(\\d{1,2})x)?(\\d{1,2}))")
+        val rangeMatches = rangeRegex.findAll(text)
+        for (rm in rangeMatches) {
+            val sVal = rm.groupValues[1].toIntOrNull() ?: rm.groupValues[4].toIntOrNull() ?: targetSeason
+            val startEp = rm.groupValues[2].toIntOrNull() ?: rm.groupValues[5].toIntOrNull()
+            val endEp = rm.groupValues[3].toIntOrNull() ?: rm.groupValues[7].toIntOrNull()
+            if (startEp != null && endEp != null) {
+                if (sVal == targetSeason && targetEpisode in minOf(startEp, endEp)..maxOf(startEp, endEp)) {
+                    return true
+                }
+            }
+        }
+
+        // 2. Check full season batch: S01 Complete, Season 1 Complete, S01 Full
+        val fullSeasonRegex = Regex("(?i)(?:s0*$sNum|season\\s*0*$sNum)[._\\s-]*(?:complete|full|pack|all)")
+        if (fullSeasonRegex.containsMatchIn(text)) {
+            return true
+        }
+
+        // 3. Check exact single episode matches: S01E04, S1E4, 1x04, 1x4, Season 1 Episode 4, eps1.4, ep04
+        val exactPatterns = listOf(
+            Regex("(?i)s0*$sNum[._\\s-]*e0*$eNum\\b"),
+            Regex("(?i)\\b0*$sNum\\s*x\\s*0*$eNum\\b"),
+            Regex("(?i)season\\s*0*$sNum\\s*ep(?:isode)?\\s*0*$eNum\\b"),
+            Regex("(?i)eps?0*$sNum[._\\s-]*0*$eNum\\b")
+        )
+        if (exactPatterns.any { it.containsMatchIn(text) }) return true
+
+        // 4. Check if filename contains explicit Season & Episode numbers for a DIFFERENT episode
+        val anyEpRegex = Regex("(?i)(?:s(\\d{1,2})[._\\s-]*e(\\d{1,2})|(\\d{1,2})x(\\d{1,2}))")
+        val matches = anyEpRegex.findAll(text)
+        var foundAny = false
+        for (m in matches) {
+            foundAny = true
+            val foundS = (m.groupValues[1].ifEmpty { m.groupValues[3] }).toIntOrNull()
+            val foundE = (m.groupValues[2].ifEmpty { m.groupValues[4] }).toIntOrNull()
+            if (foundS != null && foundE != null) {
+                if (foundS == targetSeason && foundE == targetEpisode) {
+                    return true
+                }
+            }
+        }
+
+        // If it explicitly specified another season/episode (e.g. S04E10 when we want S01E04), reject it
+        if (foundAny) return false
+
+        // 5. Fallback: Check if file name contains target episode string if Season matches
+        if (text.contains("s$sStr") || text.contains("season $sNum") || text.contains("season$sStr")) {
+            if (text.contains("e$eStr") || text.contains("ep$eNum") || text.contains("episode $eNum")) {
+                return true
+            }
+        }
+
+        return false
     }
 
     private fun parseSearchQuality(name: String, description: String = ""): SearchQuality {
