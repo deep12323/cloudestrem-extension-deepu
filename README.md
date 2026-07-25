@@ -10,7 +10,6 @@ A powerful plugin that streams media directly from your Telegram channels on-dem
 * **Telegram**: Browse and stream media directly from your raw Telegram channels and topic feeds.
 * **📦 ZIP File Streaming**: Stream uncompressed video entries directly from inside `.zip` files (including Zip64 files larger than 4GB) on-demand!
 * **🔗 Multi-Part Split File Virtual Merging**: Automatically detects and groups split files (`.001`, `.part1`, `.z01`, etc.) into a single unified card. Virtual HTTP byte-range streaming seamlessly stitches parts together during playback across file boundaries!
-* **⚡ Smart Search & Filtering**: Automatic episode filtering (matching single episodes `S01E04`, ranges `E01-E04`, and full season packs) while strictly filtering out non-video files (`.png`, `.srt`, `.nfo`, `.txt`). Streams are automatically sorted by file size from highest to lowest!
 
 ### 2. Google Drive Provider
 A fully-featured plugin to stream videos and audio directly from your personal Google Drive and Shared Drives!
