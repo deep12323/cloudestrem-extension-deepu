@@ -1,0 +1,28 @@
+[
+  {
+    "name": "Telegram",
+    "internalName": "TelegramProvider",
+    "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TelegramProvider.cs3?v=2",
+    "tvTypes": ["Movie", "TvSeries"],
+    "language": "en",
+    "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/icon.png",
+    "apiVersion": 10,
+    "version": 145,
+    "authors": ["deepu2135"],
+    "status": 1,
+    "description": "Stream any media from your Telegram chats and channels on-demand"
+  },
+  {
+    "name": "Google Drive",
+    "internalName": "GoogleDriveProvider",
+    "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/GoogleDriveProvider.cs3?v=2",
+    "tvTypes": ["Movie", "TvSeries"],
+    "language": "en",
+    "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png",
+    "apiVersion": 10,
+    "version": 11,
+    "authors": ["deepu2135"],
+    "status": 1,
+    "description": "Stream video and audio from your Google Drive"
+  }
+]

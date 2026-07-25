@@ -1,0 +1,9 @@
+{
+  "name": "cloudestrem-extension-deepu",
+  "iconUrl": "https://bollywood.eu.org/favicon.ico",
+  "description": "Telegram Extension",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/plugins.json?v=2"
+  ]
+}
