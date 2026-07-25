@@ -215,7 +215,7 @@ class TeleflixProvider : MainAPI() {
                             type = ExtractorLinkType.VIDEO
                         ) {
                             this.referer = ""
-                            this.quality = getQualityFromName(group.baseName)
+                            this.quality = getQualityFromName(group.baseName, totalSize)
                         }
                     )
                 }
@@ -235,7 +235,7 @@ class TeleflixProvider : MainAPI() {
                                 type = ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = ""
-                                this.quality = getQualityFromName(msg.fileName)
+                                this.quality = getQualityFromName(msg.fileName, msg.fileSize)
                             }
                         )
                     } else {
@@ -249,7 +249,7 @@ class TeleflixProvider : MainAPI() {
                                 type = ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = ""
-                                this.quality = getQualityFromName(msg.fileName)
+                                this.quality = getQualityFromName(msg.fileName, msg.fileSize)
                             }
                         )
                     }
@@ -353,13 +353,21 @@ class TeleflixProvider : MainAPI() {
         return set
     }
 
-    private fun getQualityFromName(name: String): Int {
+    private fun getQualityFromName(name: String, size: Long = 0L): Int {
         val lower = name.lowercase()
+        val qual = when {
+            lower.contains("2160") || lower.contains("4k") || lower.contains("uhd") -> Qualities.P2160.value
+            lower.contains("1080") || lower.contains("fhd") -> Qualities.P1080.value
+            lower.contains("720") || lower.contains("hd") -> Qualities.P720.value
+            lower.contains("480") || lower.contains("sd") || lower.contains("360p") -> Qualities.P480.value
+            else -> Qualities.Unknown.value
+        }
+        if (qual != Qualities.Unknown.value) return qual
         return when {
-            lower.contains("2160") || lower.contains("4k") -> Qualities.P2160.value
-            lower.contains("1080") -> Qualities.P1080.value
-            lower.contains("720") -> Qualities.P720.value
-            lower.contains("480") -> Qualities.P480.value
+            size >= 3_500_000_000L -> Qualities.P2160.value
+            size >= 1_000_000_000L -> Qualities.P1080.value
+            size >= 400_000_000L -> Qualities.P720.value
+            size > 0L -> Qualities.P480.value
             else -> Qualities.Unknown.value
         }
     }
