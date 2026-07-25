@@ -18,8 +18,26 @@ class TeleflixProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "$mainUrl/catalog/movie/top.json" to "Top Movies",
-        "$mainUrl/catalog/series/top.json" to "Top TV Shows"
+        "$mainUrl/catalog/movie/top.json" to "Popular Movies",
+        "$mainUrl/catalog/series/top.json" to "Popular TV Shows",
+        "$mainUrl/catalog/movie/imdbRating.json" to "Featured Movies (Top Rated)",
+        "$mainUrl/catalog/series/imdbRating.json" to "Featured TV Shows (Top Rated)",
+        "$mainUrl/catalog/movie/year/genre=2026.json" to "2026 New Movies",
+        "$mainUrl/catalog/series/year/genre=2026.json" to "2026 New TV Shows",
+        "$mainUrl/catalog/movie/top/genre=Action.json" to "Action Movies",
+        "$mainUrl/catalog/movie/top/genre=Sci-Fi.json" to "Sci-Fi Movies",
+        "$mainUrl/catalog/movie/top/genre=Comedy.json" to "Comedy Movies",
+        "$mainUrl/catalog/movie/top/genre=Horror.json" to "Horror Movies",
+        "$mainUrl/catalog/movie/top/genre=Animation.json" to "Animation Movies",
+        "$mainUrl/catalog/movie/top/genre=Thriller.json" to "Thriller Movies",
+        "$mainUrl/catalog/movie/top/genre=Romance.json" to "Romance Movies",
+        "$mainUrl/catalog/movie/top/genre=Documentary.json" to "Documentary Movies",
+        "$mainUrl/catalog/series/top/genre=Action.json" to "Action TV Shows",
+        "$mainUrl/catalog/series/top/genre=Sci-Fi.json" to "Sci-Fi TV Shows",
+        "$mainUrl/catalog/series/top/genre=Drama.json" to "Drama TV Shows",
+        "$mainUrl/catalog/series/top/genre=Comedy.json" to "Comedy TV Shows",
+        "$mainUrl/catalog/series/top/genre=Animation.json" to "Animation TV Shows",
+        "$mainUrl/catalog/series/top/genre=Documentary.json" to "Documentary TV Shows"
     )
 
     override suspend fun getMainPage(
@@ -27,7 +45,15 @@ class TeleflixProvider : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse? {
         val skip = (page - 1) * 50
-        val url = if (page == 1) request.data else request.data.replace(".json", "/skip=$skip.json")
+        val url = if (page == 1) {
+            request.data
+        } else {
+            if (request.data.contains("/genre=")) {
+                request.data.replace(".json", "?skip=$skip")
+            } else {
+                request.data.replace(".json", "/skip=$skip.json")
+            }
+        }
         
         val response = try { app.get(url).text } catch (e: Exception) { return null }
         val catalog = try { parseJson<CinemetaCatalog>(response) } catch (e: Exception) { return null }
