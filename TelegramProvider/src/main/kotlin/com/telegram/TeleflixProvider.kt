@@ -34,11 +34,9 @@ class TeleflixProvider : MainAPI() {
 
         val items = catalog.metas.map { meta ->
             val isMovie = meta.type == "movie"
-            val qual = parseSearchQuality(meta.name, meta.description ?: "")
 
             newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
-                this.quality = qual
             }
         }
 
@@ -58,11 +56,9 @@ class TeleflixProvider : MainAPI() {
 
         val all = (movies + series).map { meta ->
             val isMovie = meta.type == "movie"
-            val qual = parseSearchQuality(meta.name, meta.description ?: "")
 
             newMovieSearchResponse(meta.name, "${meta.type}/${meta.id}", if (isMovie) TvType.Movie else TvType.TvSeries) {
                 this.posterUrl = meta.poster
-                this.quality = qual
             }
         }
 

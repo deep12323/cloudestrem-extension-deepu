@@ -907,4 +907,35 @@ object TelegramRepository {
 
     fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String =
         TelegramStreamingProxy.getZipStreamUrl(fileId, innerFileName, zipSize)
+
+    /**
+     * Groups split file parts while preserving exact chronological/message order of the original list.
+     */
+    fun groupAndPreserveOrder(messages: List<TelegramVideoMessage>): List<DisplayItem> {
+        if (messages.isEmpty()) return emptyList()
+
+        val messageIndexMap = messages.withIndex().associate { it.value.messageId to it.index }
+        val (splitGroups, individualFiles) = groupSplitFiles(messages)
+
+        val items = mutableListOf<DisplayItem>()
+
+        for (group in splitGroups) {
+            val minIndex = group.parts.mapNotNull { messageIndexMap[it.messageId] }.minOrNull() ?: 0
+            items.add(DisplayItem.Group(group, minIndex))
+        }
+
+        for (msg in individualFiles) {
+            val index = messageIndexMap[msg.messageId] ?: 0
+            items.add(DisplayItem.Single(msg, index))
+        }
+
+        return items.sortedBy { it.sortIndex }
+    }
+}
+
+sealed class DisplayItem {
+    abstract val sortIndex: Int
+
+    data class Single(val message: TelegramVideoMessage, override val sortIndex: Int) : DisplayItem()
+    data class Group(val group: SplitFileGroup, override val sortIndex: Int) : DisplayItem()
 }

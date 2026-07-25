@@ -99,44 +99,47 @@ class TelegramProvider : MainAPI() {
 
         if (videos.isEmpty() && page > 1) return null
 
-        val (splitGroups, individualFiles) = TelegramRepository.groupSplitFiles(videos)
-        val searchResponses = mutableListOf<SearchResponse>()
-
-        for (group in splitGroups) {
-            val firstMsg = group.parts.first()
-            val size = group.totalSize
-            val name = group.baseName
-            val thumbId = firstMsg.thumbnailFileId?.toString() ?: ""
-            val url = "${mainUrl}?tgType=message&chatId=${firstMsg.chatId}&messageId=${firstMsg.messageId}&fileId=${firstMsg.fileId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
-            
-            val poster = firstMsg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-            val qual = parseSearchQuality(name, firstMsg.caption, size)
-            val sizeStr = formatBytes(size)
-            val typeTag = getFileTypeTag(name).ifEmpty { " [SPLIT]" }
-            val displayTitle = "${cleanTitle(name)} [$sizeStr] (${group.parts.size} parts)$typeTag"
-            
-            searchResponses.add(newMovieSearchResponse(displayTitle, url, TvType.Movie) {
-                this.posterUrl = poster
-                this.quality = qual
-            })
-        }
-
-        for (msg in individualFiles) {
-            val size = msg.fileSize
-            val name = msg.fileName
-            val thumbId = msg.thumbnailFileId?.toString() ?: ""
-            val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&fileId=${msg.fileId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
-            
-            val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-            val qual = parseSearchQuality(name, msg.caption, size)
-            val sizeStr = formatBytes(size)
-            val typeTag = getFileTypeTag(name)
-            val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]$typeTag" else "${cleanTitle(name)}$typeTag"
-            
-            searchResponses.add(newMovieSearchResponse(displayTitle, url, TvType.Movie) {
-                this.posterUrl = poster
-                this.quality = qual
-            })
+        val items = TelegramRepository.groupAndPreserveOrder(videos)
+        val searchResponses = items.mapNotNull { item ->
+            when (item) {
+                is DisplayItem.Group -> {
+                    val group = item.group
+                    val firstMsg = group.parts.first()
+                    val size = group.totalSize
+                    val name = group.baseName
+                    val thumbId = firstMsg.thumbnailFileId?.toString() ?: ""
+                    val url = "${mainUrl}?tgType=message&chatId=${firstMsg.chatId}&messageId=${firstMsg.messageId}&fileId=${firstMsg.fileId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+                    
+                    val poster = firstMsg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                    val qual = parseSearchQuality(name, firstMsg.caption, size)
+                    val sizeStr = formatBytes(size)
+                    val typeTag = getFileTypeTag(name).ifEmpty { " [SPLIT]" }
+                    val displayTitle = "${cleanTitle(name)} [$sizeStr] (${group.parts.size} parts)$typeTag"
+                    
+                    newMovieSearchResponse(displayTitle, url, TvType.Movie) {
+                        this.posterUrl = poster
+                        this.quality = qual
+                    }
+                }
+                is DisplayItem.Single -> {
+                    val msg = item.message
+                    val size = msg.fileSize
+                    val name = msg.fileName
+                    val thumbId = msg.thumbnailFileId?.toString() ?: ""
+                    val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&fileId=${msg.fileId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+                    
+                    val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                    val qual = parseSearchQuality(name, msg.caption, size)
+                    val sizeStr = formatBytes(size)
+                    val typeTag = getFileTypeTag(name)
+                    val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]$typeTag" else "${cleanTitle(name)}$typeTag"
+                    
+                    newMovieSearchResponse(displayTitle, url, TvType.Movie) {
+                        this.posterUrl = poster
+                        this.quality = qual
+                    }
+                }
+            }
         }
 
         val hasNext = videos.isNotEmpty()
@@ -153,47 +156,49 @@ class TelegramProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         if (!TelegramRepository.waitUntilAuthenticated()) return emptyList()
         val messages = TelegramRepository.searchVideoMessages(query)
-        val (splitGroups, individualFiles) = TelegramRepository.groupSplitFiles(messages)
-        val searchResponses = mutableListOf<SearchResponse>()
+        val items = TelegramRepository.groupAndPreserveOrder(messages)
         
-        for (group in splitGroups) {
-            val firstMsg = group.parts.first()
-            val size = group.totalSize
-            val name = group.baseName
-            val thumbId = firstMsg.thumbnailFileId?.toString() ?: ""
-            val url = "${mainUrl}?tgType=message&chatId=${firstMsg.chatId}&messageId=${firstMsg.messageId}&fileId=${firstMsg.fileId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
-            
-            val poster = firstMsg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-            val qual = parseSearchQuality(name, firstMsg.caption, size)
-            val sizeStr = formatBytes(size)
-            val typeTag = getFileTypeTag(name).ifEmpty { " [SPLIT]" }
-            val displayTitle = "${cleanTitle(name)} [$sizeStr] (${group.parts.size} parts)$typeTag"
-            
-            searchResponses.add(newMovieSearchResponse(displayTitle, url, TvType.Movie) {
-                this.posterUrl = poster
-                this.quality = qual
-            })
+        return items.mapNotNull { item ->
+            when (item) {
+                is DisplayItem.Group -> {
+                    val group = item.group
+                    val firstMsg = group.parts.first()
+                    val size = group.totalSize
+                    val name = group.baseName
+                    val thumbId = firstMsg.thumbnailFileId?.toString() ?: ""
+                    val url = "${mainUrl}?tgType=message&chatId=${firstMsg.chatId}&messageId=${firstMsg.messageId}&fileId=${firstMsg.fileId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+                    
+                    val poster = firstMsg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                    val qual = parseSearchQuality(name, firstMsg.caption, size)
+                    val sizeStr = formatBytes(size)
+                    val typeTag = getFileTypeTag(name).ifEmpty { " [SPLIT]" }
+                    val displayTitle = "${cleanTitle(name)} [$sizeStr] (${group.parts.size} parts)$typeTag"
+                    
+                    newMovieSearchResponse(displayTitle, url, TvType.Movie) {
+                        this.posterUrl = poster
+                        this.quality = qual
+                    }
+                }
+                is DisplayItem.Single -> {
+                    val msg = item.message
+                    val size = msg.fileSize
+                    val name = msg.fileName
+                    val thumbId = msg.thumbnailFileId?.toString() ?: ""
+                    val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&fileId=${msg.fileId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+                    
+                    val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                    val qual = parseSearchQuality(name, msg.caption, size)
+                    val sizeStr = formatBytes(size)
+                    val typeTag = getFileTypeTag(name)
+                    val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]$typeTag" else "${cleanTitle(name)}$typeTag"
+                    
+                    newMovieSearchResponse(displayTitle, url, TvType.Movie) {
+                        this.posterUrl = poster
+                        this.quality = qual
+                    }
+                }
+            }
         }
-
-        for (msg in individualFiles) {
-            val size = msg.fileSize
-            val name = msg.fileName
-            val thumbId = msg.thumbnailFileId?.toString() ?: ""
-            val url = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&fileId=${msg.fileId}&size=$size&name=${URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
-            
-            val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-            val qual = parseSearchQuality(name, msg.caption, size)
-            val sizeStr = formatBytes(size)
-            val typeTag = getFileTypeTag(name)
-            val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]$typeTag" else "${cleanTitle(name)}$typeTag"
-            
-            searchResponses.add(newMovieSearchResponse(displayTitle, url, TvType.Movie) {
-                this.posterUrl = poster
-                this.quality = qual
-            })
-        }
-
-        return searchResponses
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -217,49 +222,52 @@ class TelegramProvider : MainAPI() {
                 currentPage++
             }
             val videos = allVideos
-            val (splitGroups, individualFiles) = TelegramRepository.groupSplitFiles(videos)
+            val items = TelegramRepository.groupAndPreserveOrder(videos)
             var epNum = 1
-            val episodes = mutableListOf<Episode>()
+            val episodes = items.map { item ->
+                when (item) {
+                    is DisplayItem.Group -> {
+                        val group = item.group
+                        val firstMsg = group.parts.first()
+                        val size = group.totalSize
+                        val name = group.baseName
+                        val thumbId = firstMsg.thumbnailFileId?.toString() ?: ""
+                        val episodeUrl = "${mainUrl}?tgType=message&chatId=${firstMsg.chatId}&messageId=${firstMsg.messageId}&fileId=${firstMsg.fileId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+                        val poster = firstMsg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                        val cleanEpName = cleanTitle(name)
+                        val sizeStr = formatBytes(size)
+                        val typeTag = getFileTypeTag(name).ifEmpty { " [SPLIT]" }
 
-            for (group in splitGroups) {
-                val firstMsg = group.parts.first()
-                val size = group.totalSize
-                val name = group.baseName
-                val thumbId = firstMsg.thumbnailFileId?.toString() ?: ""
-                val episodeUrl = "${mainUrl}?tgType=message&chatId=${firstMsg.chatId}&messageId=${firstMsg.messageId}&fileId=${firstMsg.fileId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
-                val poster = firstMsg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-                val cleanEpName = cleanTitle(name)
-                val sizeStr = formatBytes(size)
-                val typeTag = getFileTypeTag(name).ifEmpty { " [SPLIT]" }
+                        newEpisode(episodeUrl) {
+                            this.name = "$cleanEpName ($sizeStr) (${group.parts.size} parts)$typeTag"
+                            this.data = episodeUrl
+                            this.season = 1
+                            this.episode = epNum++
+                            this.posterUrl = poster
+                            this.description = "Episode ${epNum - 1} • Size: $sizeStr • ${group.parts.size} split parts"
+                        }
+                    }
+                    is DisplayItem.Single -> {
+                        val msg = item.message
+                        val size = msg.fileSize
+                        val name = msg.fileName
+                        val thumbId = msg.thumbnailFileId?.toString() ?: ""
+                        val episodeUrl = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&fileId=${msg.fileId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
+                        val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
+                        val cleanEpName = cleanTitle(name)
+                        val sizeStr = formatBytes(size)
+                        val typeTag = getFileTypeTag(name)
 
-                episodes.add(newEpisode(episodeUrl) {
-                    this.name = "$cleanEpName ($sizeStr) (${group.parts.size} parts)$typeTag"
-                    this.data = episodeUrl
-                    this.season = 1
-                    this.episode = epNum++
-                    this.posterUrl = poster
-                    this.description = "Episode ${epNum - 1} • Size: $sizeStr • ${group.parts.size} split parts"
-                })
-            }
-
-            for (msg in individualFiles) {
-                val size = msg.fileSize
-                val name = msg.fileName
-                val thumbId = msg.thumbnailFileId?.toString() ?: ""
-                val episodeUrl = "${mainUrl}?tgType=message&chatId=${msg.chatId}&messageId=${msg.messageId}&fileId=${msg.fileId}&size=$size&name=${java.net.URLEncoder.encode(name, "UTF-8")}&thumbnailFileId=$thumbId"
-                val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
-                val cleanEpName = cleanTitle(name)
-                val sizeStr = formatBytes(size)
-                val typeTag = getFileTypeTag(name)
-
-                episodes.add(newEpisode(episodeUrl) {
-                    this.name = "$cleanEpName ($sizeStr)$typeTag"
-                    this.data = episodeUrl
-                    this.season = 1
-                    this.episode = epNum++
-                    this.posterUrl = poster
-                    this.description = "Episode ${epNum - 1} • Size: $sizeStr"
-                })
+                        newEpisode(episodeUrl) {
+                            this.name = "$cleanEpName ($sizeStr)$typeTag"
+                            this.data = episodeUrl
+                            this.season = 1
+                            this.episode = epNum++
+                            this.posterUrl = poster
+                            this.description = "Episode ${epNum - 1} • Size: $sizeStr"
+                        }
+                    }
+                }
             }
 
             return newTvSeriesLoadResponse(topicName, url, TvType.TvSeries, episodes) {
