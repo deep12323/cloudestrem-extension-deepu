@@ -197,89 +197,56 @@ class TeleflixProvider : MainAPI() {
             }
         }
         
-        val rawResults = mutableSetOf<TelegramVideoMessage>()
+        val emittedKeys = mutableSetOf<String>()
         val searchLimit = if (targetSeason != null) 200 else 500
-        coroutineScope {
-            val jobs = queries.map { q ->
-                async {
-                    TelegramRepository.searchVideoMessages(q, limit = searchLimit, includeAudio = false)
+
+        for (q in queries) {
+            val res = try {
+                TelegramRepository.searchVideoMessages(q, limit = searchLimit, includeAudio = false)
+            } catch (e: Exception) {
+                emptyList()
+            }
+            if (res.isEmpty()) continue
+
+            val videoResults = res.filter { msg -> isVideoFileOrContainer(msg.fileName) }
+            val filteredResults = if (targetSeason != null && targetEpisode != null) {
+                videoResults.filter { msg ->
+                    isMatchingEpisode(msg.fileName, msg.caption, targetSeason, targetEpisode)
+                }
+            } else {
+                videoResults
+            }
+            if (filteredResults.isEmpty()) continue
+
+            // Group split files and sort by total file size descending (highest size first)
+            val items = TelegramRepository.groupAndPreserveOrder(filteredResults).sortedByDescending { item ->
+                when (item) {
+                    is DisplayItem.Group -> item.group.totalSize
+                    is DisplayItem.Single -> item.message.fileSize
                 }
             }
-            val resultsList = jobs.awaitAll()
-            for (res in resultsList) {
-                rawResults.addAll(res)
-            }
-        }
 
-        // Filter out non-video files (.png, .srt, .nfo, .txt, etc.)
-        val videoResults = rawResults.filter { msg -> isVideoFileOrContainer(msg.fileName) }
-        
-        // Strict filtering for TV Series episodes
-        val filteredResults = if (targetSeason != null && targetEpisode != null) {
-            videoResults.filter { msg ->
-                isMatchingEpisode(msg.fileName, msg.caption, targetSeason, targetEpisode)
-            }
-        } else {
-            videoResults
-        }
-
-        if (filteredResults.isEmpty()) {
-            throw ErrorLoadingException("No matching streams found on Telegram for '$data'")
-        }
-
-        // Group split files and preserve original search order
-        val items = TelegramRepository.groupAndPreserveOrder(filteredResults)
-
-        for (item in items) {
-            when (item) {
-                is DisplayItem.Group -> {
-                    val group = item.group
-                    val freshIds = group.parts.map { it.fileId }
-                    val partSizes = group.parts.map { it.fileSize }
-                    val totalSize = partSizes.sum()
-                    val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
-                    val sizeStr = TelegramProvider.formatBytes(totalSize)
-                    val qualTag = getQualityTag(group.baseName, totalSize)
-
-                    callback.invoke(
-                        newExtractorLink(
-                            source = "Telegram",
-                            name = "\uD83D\uDD17 ${group.baseName} (${group.parts.size} parts, $sizeStr)$qualTag [SPLIT]",
-                            url = streamUrl,
-                            type = ExtractorLinkType.VIDEO
-                        ) {
-                            this.referer = ""
-                            this.quality = Qualities.Unknown.value
-                        }
-                    )
+            for (item in items) {
+                val key = when (item) {
+                    is DisplayItem.Group -> item.group.baseName
+                    is DisplayItem.Single -> "${item.message.chatId}_${item.message.messageId}"
                 }
-                is DisplayItem.Single -> {
-                    val msg = item.message
-                    val freshFileId = msg.fileId
-                    val ext = msg.fileName.substringAfterLast('.', "").lowercase()
-                    val qualTag = getQualityTag(msg.fileName, msg.fileSize)
+                if (!emittedKeys.add(key)) continue
 
-                    if (ext == "zip" && msg.fileSize > 1_000_000) {
-                        val streamUrl = TelegramRepository.getZipStreamUrl(freshFileId, msg.fileName, msg.fileSize)
-                        val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
+                when (item) {
+                    is DisplayItem.Group -> {
+                        val group = item.group
+                        val freshIds = group.parts.map { it.fileId }
+                        val partSizes = group.parts.map { it.fileSize }
+                        val totalSize = partSizes.sum()
+                        val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                        val sizeStr = TelegramProvider.formatBytes(totalSize)
+                        val qualTag = getQualityTag(group.baseName, totalSize)
+
                         callback.invoke(
                             newExtractorLink(
                                 source = "Telegram",
-                                name = "\uD83D\uDDC4\uFE0F ${msg.fileName} ($sizeStr)$qualTag [ZIP]",
-                                url = streamUrl,
-                                type = ExtractorLinkType.VIDEO
-                            ) {
-                                this.referer = ""
-                                this.quality = Qualities.Unknown.value
-                            }
-                        )
-                    } else {
-                        val streamUrl = TelegramRepository.getStreamUrl(freshFileId, msg.fileName, msg.fileSize)
-                        val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
-                        callback.invoke(
-                            newExtractorLink(
-                                source = "Telegram",
-                                name = "${msg.fileName} ($sizeStr)$qualTag",
+                                name = "\uD83D\uDD17 ${group.baseName} (${group.parts.size} parts, $sizeStr)$qualTag [SPLIT]",
                                 url = streamUrl,
                                 type = ExtractorLinkType.VIDEO
                             ) {
@@ -288,8 +255,49 @@ class TeleflixProvider : MainAPI() {
                             }
                         )
                     }
+                    is DisplayItem.Single -> {
+                        val msg = item.message
+                        val freshFileId = msg.fileId
+                        val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                        val qualTag = getQualityTag(msg.fileName, msg.fileSize)
+                        val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
+
+                        if (ext == "zip" && msg.fileSize > 1_000_000) {
+                            val streamUrl = TelegramRepository.getZipStreamUrl(freshFileId, msg.fileName, msg.fileSize)
+                            callback.invoke(
+                                newExtractorLink(
+                                    source = "Telegram",
+                                    name = "\uD83D\uDDC4\uFE0F ${msg.fileName} ($sizeStr)$qualTag [ZIP]",
+                                    url = streamUrl,
+                                    type = ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = ""
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
+                        } else {
+                            val streamUrl = TelegramRepository.getStreamUrl(freshFileId, msg.fileName, msg.fileSize)
+                            callback.invoke(
+                                newExtractorLink(
+                                    source = "Telegram",
+                                    name = "${msg.fileName} ($sizeStr)$qualTag",
+                                    url = streamUrl,
+                                    type = ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = ""
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
+                        }
+                    }
                 }
             }
+
+            if (emittedKeys.size >= 15) break
+        }
+
+        if (emittedKeys.isEmpty()) {
+            throw ErrorLoadingException("No matching streams found on Telegram for '$data'")
         }
 
         return true
