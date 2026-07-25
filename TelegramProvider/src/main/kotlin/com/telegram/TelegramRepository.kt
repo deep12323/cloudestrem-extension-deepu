@@ -821,20 +821,23 @@ object TelegramRepository {
 
     /**
      * Detects split file groups from a list of messages.
-     * Split files have numeric extensions (.001, .002) or patterns like .part1, .part01.
+     * Split files have numeric extensions (.001, .002), patterns like .part1, .z01, or identical names.
      * Returns a pair of (grouped split files, remaining individual files).
      */
     fun groupSplitFiles(messages: List<TelegramVideoMessage>): Pair<List<SplitFileGroup>, List<TelegramVideoMessage>> {
         val splitPattern = Regex("""^(.+?)\.(\d{2,4})$""")  // matches file.001, file.02, file.0001
-        val partPattern = Regex("""^(.+?)\.part(\d+)$""", RegexOption.IGNORE_CASE)  // matches file.part1, file.Part01
+        val partPattern = Regex("""^(.+?)\.part(\d+)(?:\.[a-zA-Z0-9]+)?$""", RegexOption.IGNORE_CASE)  // matches file.part1.rar, file.part01.zip
+        val zPattern = Regex("""^(.+?)\.z(\d{2,3})$""", RegexOption.IGNORE_CASE) // matches file.z01, file.z02
         
         val groups = mutableMapOf<String, MutableList<Pair<Int, TelegramVideoMessage>>>()
+        val sameNameGroups = mutableMapOf<String, MutableList<TelegramVideoMessage>>()
         val singles = mutableListOf<TelegramVideoMessage>()
         
         for (msg in messages) {
             val name = msg.fileName
             val splitMatch = splitPattern.find(name)
             val partMatch = partPattern.find(name)
+            val zMatch = zPattern.find(name)
             
             when {
                 splitMatch != null -> {
@@ -847,14 +850,22 @@ object TelegramRepository {
                     val partNum = partMatch.groupValues[2].toIntOrNull() ?: 0
                     groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
                 }
-                else -> singles.add(msg)
+                zMatch != null -> {
+                    val baseName = zMatch.groupValues[1]
+                    val partNum = zMatch.groupValues[2].toIntOrNull() ?: 0
+                    groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
+                }
+                else -> {
+                    val key = "${msg.chatId}_${msg.fileName}"
+                    sameNameGroups.getOrPut(key) { mutableListOf() }.add(msg)
+                }
             }
         }
         
         val splitGroups = mutableListOf<SplitFileGroup>()
+        
         for ((baseName, parts) in groups) {
             if (parts.size < 2) {
-                // Single part with numeric extension - treat as individual
                 singles.addAll(parts.map { it.second })
                 continue
             }
@@ -864,6 +875,20 @@ object TelegramRepository {
                 parts = sorted,
                 totalSize = sorted.sumOf { it.fileSize }
             ))
+        }
+
+        for ((_, parts) in sameNameGroups) {
+            if (parts.size >= 2) {
+                val sorted = parts.sortedBy { it.messageId }
+                val baseName = parts.first().fileName
+                splitGroups.add(SplitFileGroup(
+                    baseName = baseName,
+                    parts = sorted,
+                    totalSize = sorted.sumOf { it.fileSize }
+                ))
+            } else {
+                singles.addAll(parts)
+            }
         }
         
         return splitGroups to singles
