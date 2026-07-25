@@ -341,6 +341,67 @@ object TelegramStreamingProxy {
         }
     }
 
+    private suspend fun readChunkFromMerged(
+        fileIds: List<Int>,
+        sizes: List<Long>,
+        globalOffset: Long,
+        limit: Int
+    ): ByteArray? {
+        if (fileIds.isEmpty() || sizes.isEmpty()) return null
+        val totalSize = sizes.sum()
+        if (globalOffset >= totalSize) return null
+
+        val partStartOffsets = LongArray(sizes.size)
+        for (i in 1 until sizes.size) {
+            partStartOffsets[i] = partStartOffsets[i - 1] + sizes[i - 1]
+        }
+
+        var partIndex = partStartOffsets.indexOfLast { it <= globalOffset }
+        if (partIndex < 0) partIndex = 0
+
+        val partFileId = fileIds[partIndex]
+        val partOffset = globalOffset - partStartOffsets[partIndex]
+        val partRemaining = sizes[partIndex] - partOffset
+        val chunkSize = minOf(limit.toLong(), partRemaining).toInt()
+
+        val prefetchBytes = when {
+            prefetchSizeMb == -1L -> 0L
+            prefetchSizeMb <= 0L -> chunkSize.toLong()
+            else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
+        }
+        val alignedPartOffset = partOffset - (partOffset % (1024 * 1024))
+        runCatching {
+            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                req.fileId = partFileId
+                req.priority = DOWNLOAD_PRIORITY
+                req.offset = alignedPartOffset
+                req.limit = prefetchBytes
+                req.synchronous = false
+            })
+        }
+
+        return downloadChunk(partFileId, partOffset, chunkSize)
+    }
+
+    private suspend fun readBufferFromMerged(
+        fileIds: List<Int>,
+        sizes: List<Long>,
+        globalOffset: Long,
+        totalToRead: Int
+    ): ByteArray? {
+        if (totalToRead <= 0) return ByteArray(0)
+        val buffer = ByteArray(totalToRead)
+        var bytesRead = 0
+        while (bytesRead < totalToRead && running) {
+            val readSize = minOf(CHUNK_SIZE, totalToRead - bytesRead)
+            val chunk = readChunkFromMerged(fileIds, sizes, globalOffset + bytesRead, readSize)
+            if (chunk == null || chunk.isEmpty()) break
+            System.arraycopy(chunk, 0, buffer, bytesRead, chunk.size)
+            bytesRead += chunk.size
+        }
+        return if (bytesRead == totalToRead) buffer else if (bytesRead > 0) buffer.copyOf(bytesRead) else null
+    }
+
     private suspend fun streamMergedFile(
         fileIds: List<Int>,
         sizes: List<Long>,
@@ -351,6 +412,13 @@ object TelegramStreamingProxy {
         val totalSize = sizes.sum()
         if (totalSize <= 0L || fileIds.isEmpty()) {
             output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
+            return
+        }
+
+        val ext = fileName?.substringAfterLast('.', "")?.lowercase() ?: ""
+        if (ext == "zip") {
+            // Merged ZIP file: parse ZIP Central Directory and stream inner video file
+            streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output)
             return
         }
 
@@ -367,7 +435,6 @@ object TelegramStreamingProxy {
         }
         val length = end - start + 1
 
-        val ext = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() } ?: ""
         val mimeType = getMimeType(ext)
 
         val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
@@ -384,42 +451,10 @@ object TelegramStreamingProxy {
 
         output.write(headers.toByteArray())
 
-        // Build cumulative offset table: partStartOffsets[i] = sum of sizes[0..i-1]
-        val partStartOffsets = LongArray(sizes.size)
-        for (i in 1 until sizes.size) {
-            partStartOffsets[i] = partStartOffsets[i - 1] + sizes[i - 1]
-        }
-
         var offset = start
         while (offset <= end && running) {
-            // Find which part this offset belongs to
-            var partIndex = partStartOffsets.indexOfLast { it <= offset }
-            if (partIndex < 0) partIndex = 0
-
-            val partFileId = fileIds[partIndex]
-            val partOffset = offset - partStartOffsets[partIndex]
-            val partRemaining = sizes[partIndex] - partOffset
-            val globalRemaining = end - offset + 1
-            val chunkSize = minOf(CHUNK_SIZE.toLong(), partRemaining, globalRemaining).toInt()
-
-            // Ensure download is active for this part
-            val prefetchBytes = when {
-                prefetchSizeMb == -1L -> 0L
-                prefetchSizeMb <= 0L -> chunkSize.toLong()
-                else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
-            }
-            val alignedPartOffset = partOffset - (partOffset % (1024 * 1024))
-            runCatching {
-                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                    req.fileId = partFileId
-                    req.priority = DOWNLOAD_PRIORITY
-                    req.offset = alignedPartOffset
-                    req.limit = prefetchBytes
-                    req.synchronous = false
-                })
-            }
-
-            val bytes = downloadChunk(partFileId, partOffset, chunkSize)
+            val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
+            val bytes = readChunkFromMerged(fileIds, sizes, offset, chunkSize)
             if (bytes == null || bytes.isEmpty()) break
             output.write(bytes)
             output.flush()
@@ -438,34 +473,45 @@ object TelegramStreamingProxy {
             val info = getFileInfo(fileId)
             info?.second?.takeIf { it > 0 } ?: info?.third?.takeIf { it > 0 } ?: 0L
         }
+        streamZipEntryFromMergedOrSingle(listOf(fileId), listOf(totalZipSize), innerFileName, rangeHeader, output)
+    }
 
-        if (totalZipSize <= 0L) {
+    private suspend fun streamZipEntryFromMergedOrSingle(
+        fileIds: List<Int>,
+        sizes: List<Long>,
+        requestedInnerName: String?,
+        rangeHeader: String?,
+        output: java.io.OutputStream
+    ) {
+        val totalZipSize = sizes.sum()
+        if (totalZipSize <= 0L || fileIds.isEmpty()) {
             output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
             return
         }
 
-        // Ensure download is started for the ZIP file
-        runCatching {
-            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                req.fileId = fileId
-                req.priority = DOWNLOAD_PRIORITY
-                req.offset = 0
-                req.limit = 0 // download entire file
-                req.synchronous = false
-            })
+        // Ensure downloads started for all parts
+        for (fId in fileIds) {
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = fId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = 0
+                    req.limit = 0
+                    req.synchronous = false
+                })
+            }
         }
 
-        // Step 1: Read EOCD (End of Central Directory) - last 22 bytes minimum
-        // EOCD signature: 0x06054b50
-        val eocdSearchSize = minOf(65557L, totalZipSize).toInt() // Max EOCD size with comment
+        // Step 1: Read EOCD (End of Central Directory)
+        val eocdSearchSize = minOf(65557L, totalZipSize).toInt()
         val eocdOffset = totalZipSize - eocdSearchSize
-        val eocdData = downloadChunk(fileId, eocdOffset, eocdSearchSize)
+        val eocdData = readBufferFromMerged(fileIds, sizes, eocdOffset, eocdSearchSize)
         if (eocdData == null || eocdData.size < 22) {
             output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read ZIP EOCD".toByteArray())
             return
         }
 
-        // Find EOCD signature (search backwards)
+        // Find EOCD signature (0x06054b50) searching backwards
         var eocdPos = -1
         for (i in eocdData.size - 22 downTo 0) {
             if (eocdData[i] == 0x50.toByte() &&
@@ -483,7 +529,6 @@ object TelegramStreamingProxy {
             return
         }
 
-        // Parse EOCD
         fun readUInt16(data: ByteArray, off: Int): Int =
             (data[off].toInt() and 0xFF) or ((data[off + 1].toInt() and 0xFF) shl 8)
         fun readUInt32(data: ByteArray, off: Int): Long =
@@ -491,19 +536,43 @@ object TelegramStreamingProxy {
             ((data[off + 1].toInt() and 0xFF).toLong() shl 8) or
             ((data[off + 2].toInt() and 0xFF).toLong() shl 16) or
             ((data[off + 3].toInt() and 0xFF).toLong() shl 24)
+        fun readUInt64(data: ByteArray, off: Int): Long =
+            (readUInt32(data, off) and 0xFFFFFFFFL) or ((readUInt32(data, off + 4) and 0xFFFFFFFFL) shl 32)
 
-        val cdSize = readUInt32(eocdData, eocdPos + 12)
-        val cdOffset = readUInt32(eocdData, eocdPos + 16)
+        var cdSize = readUInt32(eocdData, eocdPos + 12)
+        var cdOffset = readUInt32(eocdData, eocdPos + 16)
 
-        // Step 2: Read the Central Directory
-        val cdData = downloadChunk(fileId, cdOffset, cdSize.toInt())
+        // Check for Zip64 Locator (0x07064b50) before EOCD
+        var isZip64 = false
+        if (cdOffset == 0xFFFFFFFFL || cdSize == 0xFFFFFFFFL || eocdPos >= 20) {
+            val locatorPos = eocdPos - 20
+            if (locatorPos >= 0 &&
+                eocdData[locatorPos] == 0x50.toByte() &&
+                eocdData[locatorPos + 1] == 0x4B.toByte() &&
+                eocdData[locatorPos + 2] == 0x06.toByte() &&
+                eocdData[locatorPos + 3] == 0x07.toByte()
+            ) {
+                val zip64EocdOffset = readUInt64(eocdData, locatorPos + 8)
+                val zip64EocdData = readBufferFromMerged(fileIds, sizes, zip64EocdOffset, 56)
+                if (zip64EocdData != null && zip64EocdData.size >= 56 &&
+                    zip64EocdData[0] == 0x50.toByte() && zip64EocdData[1] == 0x4B.toByte() &&
+                    zip64EocdData[2] == 0x06.toByte() && zip64EocdData[3] == 0x06.toByte()
+                ) {
+                    cdSize = readUInt64(zip64EocdData, 40)
+                    cdOffset = readUInt64(zip64EocdData, 48)
+                    isZip64 = true
+                }
+            }
+        }
+
+        // Step 2: Read Central Directory
+        val cdData = readBufferFromMerged(fileIds, sizes, cdOffset, cdSize.toInt())
         if (cdData == null || cdData.isEmpty()) {
             output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read Central Directory".toByteArray())
             return
         }
 
-        // Step 3: Parse CD entries to find the target file
-        // Central Directory file header signature: 0x02014b50
+        // Step 3: Parse CD entries
         data class ZipEntry(
             val name: String,
             val compressionMethod: Int,
@@ -520,31 +589,76 @@ object TelegramStreamingProxy {
             ) break
 
             val compressionMethod = readUInt16(cdData, pos + 10)
-            val compressedSize = readUInt32(cdData, pos + 20)
-            val uncompressedSize = readUInt32(cdData, pos + 24)
+            var compressedSize = readUInt32(cdData, pos + 20)
+            var uncompressedSize = readUInt32(cdData, pos + 24)
             val nameLength = readUInt16(cdData, pos + 28)
             val extraLength = readUInt16(cdData, pos + 30)
             val commentLength = readUInt16(cdData, pos + 32)
-            val localHeaderOffset = readUInt32(cdData, pos + 42)
+            var localHeaderOffset = readUInt32(cdData, pos + 42)
 
             val nameBytes = cdData.copyOfRange(pos + 46, pos + 46 + nameLength)
-            val name = String(nameBytes, Charsets.UTF_8)
+            val entryName = String(nameBytes, Charsets.UTF_8)
 
-            entries.add(ZipEntry(name, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset))
+            // Parse Zip64 extra field if present
+            if (extraLength > 0 && pos + 46 + nameLength + extraLength <= cdData.size) {
+                var extraPos = pos + 46 + nameLength
+                val extraEnd = extraPos + extraLength
+                while (extraPos + 4 <= extraEnd) {
+                    val headerId = readUInt16(cdData, extraPos)
+                    val dataSize = readUInt16(cdData, extraPos + 2)
+                    if (headerId == 0x0001 && extraPos + 4 + dataSize <= extraEnd) {
+                        var zip64FieldPos = extraPos + 4
+                        if (uncompressedSize == 0xFFFFFFFFL && zip64FieldPos + 8 <= extraEnd) {
+                            uncompressedSize = readUInt64(cdData, zip64FieldPos)
+                            zip64FieldPos += 8
+                        }
+                        if (compressedSize == 0xFFFFFFFFL && zip64FieldPos + 8 <= extraEnd) {
+                            compressedSize = readUInt64(cdData, zip64FieldPos)
+                            zip64FieldPos += 8
+                        }
+                        if (localHeaderOffset == 0xFFFFFFFFL && zip64FieldPos + 8 <= extraEnd) {
+                            localHeaderOffset = readUInt64(cdData, zip64FieldPos)
+                        }
+                        break
+                    }
+                    extraPos += 4 + dataSize
+                }
+            }
+
+            if (!entryName.endsWith("/")) {
+                entries.add(ZipEntry(entryName, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset))
+            }
             pos += 46 + nameLength + extraLength + commentLength
         }
 
-        // Find the target entry (case-insensitive match, also try matching just the filename part)
-        val target = entries.find { it.name.equals(innerFileName, ignoreCase = true) }
-            ?: entries.find { it.name.substringAfterLast('/').equals(innerFileName, ignoreCase = true) }
-            ?: entries.find { 
-                val entryExt = it.name.substringAfterLast('.', "").lowercase()
-                entryExt in listOf("mkv", "mp4", "avi", "mov", "webm", "flv", "ts", "m2ts",
-                    "mp3", "flac", "aac", "ogg", "opus", "wav", "m4a")
+        if (entries.isEmpty()) {
+            output.write("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNo files found in ZIP archive".toByteArray())
+            return
+        }
+
+        // Smart Target Selection:
+        val mediaExtensions = setOf("mkv", "mp4", "avi", "mov", "webm", "flv", "wmv", "ts", "m2ts", "m4v", "3gp", "mp3", "flac", "aac", "ogg", "opus", "wav", "m4a")
+
+        var target: ZipEntry? = null
+
+        // 1. If requested inner name is not ending with .zip, try exact or filename match
+        if (!requestedInnerName.isNullOrBlank() && !requestedInnerName.lowercase().endsWith(".zip")) {
+            target = entries.find { it.name.equals(requestedInnerName, ignoreCase = true) }
+                ?: entries.find { it.name.substringAfterLast('/').equals(requestedInnerName, ignoreCase = true) }
+        }
+
+        // 2. Otherwise pick the largest media file inside the ZIP archive
+        if (target == null) {
+            val mediaEntries = entries.filter { 
+                val ext = it.name.substringAfterLast('.', "").lowercase()
+                ext in mediaExtensions
             }
+            target = mediaEntries.maxByOrNull { it.uncompressedSize }
+                ?: entries.maxByOrNull { it.uncompressedSize }
+        }
 
         if (target == null) {
-            output.write("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nFile '$innerFileName' not found in ZIP archive".toByteArray())
+            output.write("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNo playable entry found in ZIP".toByteArray())
             return
         }
 
@@ -553,9 +667,8 @@ object TelegramStreamingProxy {
             return
         }
 
-        // Step 4: Read the Local File Header to find the actual data offset
-        // Local file header: 30 bytes fixed + variable name + extra
-        val localHeader = downloadChunk(fileId, target.localHeaderOffset, 30)
+        // Step 4: Read Local Header for target
+        val localHeader = readBufferFromMerged(fileIds, sizes, target.localHeaderOffset, 30)
         if (localHeader == null || localHeader.size < 30) {
             output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read local file header".toByteArray())
             return
@@ -564,11 +677,11 @@ object TelegramStreamingProxy {
         val localExtraLen = readUInt16(localHeader, 28)
         val dataOffset = target.localHeaderOffset + 30 + localNameLen + localExtraLen
 
-        val innerFileSize = target.uncompressedSize // Same as compressedSize for STORED
+        val innerFileSize = target.uncompressedSize
 
-        Log.d(TAG, "ZIP streaming: entry='${target.name}' size=$innerFileSize dataOffset=$dataOffset compressionMethod=${target.compressionMethod}")
+        Log.d(TAG, "ZIP streaming entry '${target.name}' size=$innerFileSize dataOffset=$dataOffset isZip64=$isZip64")
 
-        // Step 5: Stream the inner file data with HTTP range support
+        // Step 5: Stream target inner file data with HTTP range support
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
         val reqStart: Long
         val reqEnd: Long
@@ -599,36 +712,13 @@ object TelegramStreamingProxy {
 
         output.write(headers.toByteArray())
 
-        // Stream the data — offset into the actual ZIP file is dataOffset + reqStart
+        // Stream inner video content bytes from dataOffset + reqStart
         var offset = reqStart
-        var activeDownloadEnd = -1L
         while (offset <= reqEnd && running) {
             val chunkSize = minOf(CHUNK_SIZE.toLong(), reqEnd - offset + 1).toInt()
-            val zipOffset = dataOffset + offset
+            val globalZipOffset = dataOffset + offset
 
-            if (zipOffset >= activeDownloadEnd) {
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-                }
-                val tdlibPrefetch = when {
-                    prefetchSizeMb == -1L -> 0L
-                    prefetchSizeMb <= 0L -> chunkSize.toLong()
-                    else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
-                }
-                val alignedOffset = zipOffset - (zipOffset % (1024 * 1024))
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = fileId
-                        req.priority = DOWNLOAD_PRIORITY
-                        req.offset = alignedOffset
-                        req.limit = tdlibPrefetch
-                        req.synchronous = false
-                    })
-                }
-                activeDownloadEnd = if (tdlibPrefetch == 0L) totalZipSize else alignedOffset + tdlibPrefetch
-            }
-
-            val bytes = downloadChunk(fileId, zipOffset, chunkSize)
+            val bytes = readChunkFromMerged(fileIds, sizes, globalZipOffset, chunkSize)
             if (bytes == null || bytes.isEmpty()) break
             output.write(bytes)
             output.flush()
