@@ -48,8 +48,8 @@ class TeleflixProvider : MainAPI() {
         val url = if (page == 1) {
             request.data
         } else {
-            if (request.data.contains("/genre=")) {
-                request.data.replace(".json", "?skip=$skip")
+            if (request.data.contains("genre=")) {
+                request.data.replace(".json", "&skip=$skip.json")
             } else {
                 request.data.replace(".json", "/skip=$skip.json")
             }
