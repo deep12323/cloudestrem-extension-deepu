@@ -239,9 +239,7 @@ class TeleflixProvider : MainAPI() {
             when (item) {
                 is DisplayItem.Group -> {
                     val group = item.group
-                    val freshIds = group.parts.map { part ->
-                        TelegramRepository.getFreshFileId(part.chatId, part.messageId) ?: part.fileId
-                    }
+                    val freshIds = group.parts.map { it.fileId }
                     val partSizes = group.parts.map { it.fileSize }
                     val totalSize = partSizes.sum()
                     val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
@@ -262,7 +260,7 @@ class TeleflixProvider : MainAPI() {
                 }
                 is DisplayItem.Single -> {
                     val msg = item.message
-                    val freshFileId = TelegramRepository.getFreshFileId(msg.chatId, msg.messageId) ?: msg.fileId
+                    val freshFileId = msg.fileId
                     val ext = msg.fileName.substringAfterLast('.', "").lowercase()
                     val qualTag = getQualityTag(msg.fileName, msg.fileSize)
 
