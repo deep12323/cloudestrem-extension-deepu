@@ -8,6 +8,9 @@ import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.drinkless.tdlib.TdApi
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 class TeleflixProvider : MainAPI() {
     override var mainUrl = "https://v3-cinemeta.strem.io"
@@ -195,9 +198,17 @@ class TeleflixProvider : MainAPI() {
         }
         
         val rawResults = mutableSetOf<TelegramVideoMessage>()
-        for (q in queries) {
-            val res = TelegramRepository.searchVideoMessages(q, limit = 1000, includeAudio = false)
-            rawResults.addAll(res)
+        val searchLimit = if (targetSeason != null) 200 else 500
+        coroutineScope {
+            val jobs = queries.map { q ->
+                async {
+                    TelegramRepository.searchVideoMessages(q, limit = searchLimit, includeAudio = false)
+                }
+            }
+            val resultsList = jobs.awaitAll()
+            for (res in resultsList) {
+                rawResults.addAll(res)
+            }
         }
 
         // Filter out non-video files (.png, .srt, .nfo, .txt, etc.)
