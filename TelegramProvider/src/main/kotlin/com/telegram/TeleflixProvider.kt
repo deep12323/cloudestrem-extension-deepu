@@ -173,21 +173,24 @@ class TeleflixProvider : MainAPI() {
             val res = TelegramRepository.searchVideoMessages(q, limit = 1000, includeAudio = false)
             rawResults.addAll(res)
         }
+
+        // Filter out non-video files (.png, .srt, .nfo, .txt, etc.)
+        val videoResults = rawResults.filter { msg -> isVideoFileOrContainer(msg.fileName) }
         
-        // Strict filtering for TV Series episodes (supports single episodes, multi-episode ranges e.g. E01-E04, and full season packs)
+        // Strict filtering for TV Series episodes
         val filteredResults = if (targetSeason != null && targetEpisode != null) {
-            rawResults.filter { msg ->
+            videoResults.filter { msg ->
                 isMatchingEpisode(msg.fileName, msg.caption, targetSeason, targetEpisode)
             }
         } else {
-            rawResults.toList()
+            videoResults
         }
 
         if (filteredResults.isEmpty()) {
             throw ErrorLoadingException("No matching streams found on Telegram for '$data'")
         }
 
-        // Group split files and sort by file size descending (highest file size to lowest file size)
+        // Group split files and sort strictly by total file size descending (highest to lowest)
         val items = TelegramRepository.groupAndPreserveOrder(filteredResults).sortedByDescending { item ->
             when (item) {
                 is DisplayItem.Group -> item.group.totalSize
@@ -206,16 +209,17 @@ class TeleflixProvider : MainAPI() {
                     val totalSize = partSizes.sum()
                     val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                     val sizeStr = TelegramProvider.formatBytes(totalSize)
+                    val qualTag = getQualityTag(group.baseName, totalSize)
 
                     callback.invoke(
                         newExtractorLink(
                             source = "Telegram",
-                            name = "\uD83D\uDD17 ${group.baseName} (${group.parts.size} parts, $sizeStr) [SPLIT]",
+                            name = "\uD83D\uDD17 ${group.baseName} (${group.parts.size} parts, $sizeStr)$qualTag [SPLIT]",
                             url = streamUrl,
                             type = ExtractorLinkType.VIDEO
                         ) {
                             this.referer = ""
-                            this.quality = getQualityFromName(group.baseName, totalSize)
+                            this.quality = Qualities.Unknown.value
                         }
                     )
                 }
@@ -223,6 +227,7 @@ class TeleflixProvider : MainAPI() {
                     val msg = item.message
                     val freshFileId = TelegramRepository.getFreshFileId(msg.chatId, msg.messageId) ?: msg.fileId
                     val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                    val qualTag = getQualityTag(msg.fileName, msg.fileSize)
 
                     if (ext == "zip" && msg.fileSize > 1_000_000) {
                         val streamUrl = TelegramRepository.getZipStreamUrl(freshFileId, msg.fileName, msg.fileSize)
@@ -230,12 +235,12 @@ class TeleflixProvider : MainAPI() {
                         callback.invoke(
                             newExtractorLink(
                                 source = "Telegram",
-                                name = "\uD83D\uDDC4\uFE0F ${msg.fileName} ($sizeStr) [ZIP]",
+                                name = "\uD83D\uDDC4\uFE0F ${msg.fileName} ($sizeStr)$qualTag [ZIP]",
                                 url = streamUrl,
                                 type = ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = ""
-                                this.quality = getQualityFromName(msg.fileName, msg.fileSize)
+                                this.quality = Qualities.Unknown.value
                             }
                         )
                     } else {
@@ -244,12 +249,12 @@ class TeleflixProvider : MainAPI() {
                         callback.invoke(
                             newExtractorLink(
                                 source = "Telegram",
-                                name = "${msg.fileName} ($sizeStr)",
+                                name = "${msg.fileName} ($sizeStr)$qualTag",
                                 url = streamUrl,
                                 type = ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = ""
-                                this.quality = getQualityFromName(msg.fileName, msg.fileSize)
+                                this.quality = Qualities.Unknown.value
                             }
                         )
                     }
@@ -351,6 +356,46 @@ class TeleflixProvider : MainAPI() {
         if (isDub) set.add(DubStatus.Dubbed)
         if (isSub) set.add(DubStatus.Subbed)
         return set
+    }
+
+    private fun getQualityTag(name: String, size: Long = 0L): String {
+        val lower = name.lowercase()
+        return when {
+            lower.contains("2160") || lower.contains("4k") || lower.contains("uhd") -> " [4K]"
+            lower.contains("1080") || lower.contains("fhd") -> " [1080p]"
+            lower.contains("720") || lower.contains("hd") -> " [720p]"
+            lower.contains("480") || lower.contains("sd") -> " [480p]"
+            size >= 3_500_000_000L -> " [4K]"
+            size >= 1_000_000_000L -> " [1080p]"
+            size >= 400_000_000L -> " [720p]"
+            size > 0L -> " [480p]"
+            else -> ""
+        }
+    }
+
+    private fun isVideoFileOrContainer(fileName: String): Boolean {
+        val lower = fileName.lowercase()
+        val ext = lower.substringAfterLast('.', "")
+        val rejectedExts = setOf(
+            "png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff",
+            "srt", "vtt", "ass", "sub", "idx", "smi",
+            "nfo", "txt", "pdf", "doc", "docx", "html", "xml", "json",
+            "apk", "exe", "zip64", "url"
+        )
+        if (ext in rejectedExts) return false
+
+        val videoExts = setOf(
+            "mkv", "mp4", "avi", "webm", "mov", "flv", "wmv", "m4v", "ts",
+            "mpg", "mpeg", "m2ts", "vob", "ogv", "divx", "3gp", "rmvb"
+        )
+        if (ext in videoExts) return true
+
+        val splitPattern = Regex("""^\d+$""")
+        if (ext == "zip" || ext == "rar" || ext == "7z" || splitPattern.matches(ext) || lower.matches(Regex(""".*\.part\d+$"""))) {
+            return true
+        }
+
+        return false
     }
 
     private fun getQualityFromName(name: String, size: Long = 0L): Int {
