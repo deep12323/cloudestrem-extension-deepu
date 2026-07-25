@@ -5,9 +5,12 @@ A collection of powerful, native [Cloudstream 3](https://github.com/recloudstrea
 ## 🔌 Available Plugins
 
 ### 1. Telegram & Teleflix Provider
-A plugin that streams media directly from your configured custom Telegram channels without downloading the files permanently.
-* **Teleflix**: A beautiful Netflix-like Cinemeta catalogue showing worldwide trending Movies and TV Shows, which multi-searches your Telegram channels for streams.
-* **Telegram**: Browse and stream media directly from your raw Telegram channels.
+A powerful plugin that streams media directly from your Telegram channels on-demand without downloading files permanently.
+* **Teleflix**: A Netflix-style Cinemeta catalogue displaying 20 trending categories (Popular Movies, Popular TV Shows, Featured Top Rated, 2026 Releases, and Action, Sci-Fi, Comedy, Horror, Animation, Thriller, Romance, & Documentary genres), which multi-searches your Telegram channels for streams.
+* **Telegram**: Browse and stream media directly from your raw Telegram channels and topic feeds.
+* **📦 ZIP File Streaming**: Stream uncompressed video entries directly from inside `.zip` files (including Zip64 files larger than 4GB) on-demand!
+* **🔗 Multi-Part Split File Virtual Merging**: Automatically detects and groups split files (`.001`, `.part1`, `.z01`, etc.) into a single unified card. Virtual HTTP byte-range streaming seamlessly stitches parts together during playback across file boundaries!
+* **⚡ Smart Search & Filtering**: Automatic episode filtering (matching single episodes `S01E04`, ranges `E01-E04`, and full season packs) while strictly filtering out non-video files (`.png`, `.srt`, `.nfo`, `.txt`). Streams are automatically sorted by file size from highest to lowest!
 
 ### 2. Google Drive Provider
 A fully-featured plugin to stream videos and audio directly from your personal Google Drive and Shared Drives!
