@@ -176,23 +176,68 @@ class TeleflixProvider : MainAPI() {
             throw ErrorLoadingException("No streams found on Telegram for '$data'")
         }
 
-        results.forEach { msg ->
-            // Use fresh fileId to avoid stale IDs after TDLib session restarts
-            val freshFileId = TelegramRepository.getFreshFileId(msg.chatId, msg.messageId) ?: msg.fileId
-            val streamUrl = TelegramRepository.getStreamUrl(freshFileId, msg.fileName, msg.fileSize)
-            val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
-            
+        // Group split files
+        val (splitGroups, individualFiles) = TelegramRepository.groupSplitFiles(results.toList())
+
+        // Emit merged links for split file groups
+        for (group in splitGroups) {
+            val freshIds = group.parts.map { part ->
+                TelegramRepository.getFreshFileId(part.chatId, part.messageId) ?: part.fileId
+            }
+            val partSizes = group.parts.map { it.fileSize }
+            val totalSize = partSizes.sum()
+            val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+            val sizeStr = TelegramProvider.formatBytes(totalSize)
+
             callback.invoke(
                 newExtractorLink(
                     source = "Telegram",
-                    name = "${msg.fileName} ($sizeStr)",
+                    name = "\uD83D\uDD17 ${group.baseName} (${group.parts.size} parts, $sizeStr) [SPLIT]",
                     url = streamUrl,
                     type = ExtractorLinkType.VIDEO
                 ) {
                     this.referer = ""
-                    this.quality = getQualityFromName(msg.fileName)
+                    this.quality = getQualityFromName(group.baseName)
                 }
             )
+        }
+
+        // Emit individual file links (including ZIP streaming)
+        individualFiles.forEach { msg ->
+            val freshFileId = TelegramRepository.getFreshFileId(msg.chatId, msg.messageId) ?: msg.fileId
+            val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+
+            if (ext == "zip" && msg.fileSize > 1_000_000) {
+                // ZIP streaming
+                val streamUrl = TelegramRepository.getZipStreamUrl(freshFileId, msg.fileName, msg.fileSize)
+                val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
+                callback.invoke(
+                    newExtractorLink(
+                        source = "Telegram",
+                        name = "\uD83D\uDDC4\uFE0F ${msg.fileName} ($sizeStr) [ZIP]",
+                        url = streamUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = ""
+                        this.quality = getQualityFromName(msg.fileName)
+                    }
+                )
+            } else {
+                // Regular file streaming
+                val streamUrl = TelegramRepository.getStreamUrl(freshFileId, msg.fileName, msg.fileSize)
+                val sizeStr = TelegramProvider.formatBytes(msg.fileSize)
+                callback.invoke(
+                    newExtractorLink(
+                        source = "Telegram",
+                        name = "${msg.fileName} ($sizeStr)",
+                        url = streamUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = ""
+                        this.quality = getQualityFromName(msg.fileName)
+                    }
+                )
+            }
         }
 
         return true

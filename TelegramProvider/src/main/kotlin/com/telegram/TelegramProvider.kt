@@ -108,7 +108,8 @@ class TelegramProvider : MainAPI() {
             val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
             val qual = parseSearchQuality(name, msg.caption, size)
             val sizeStr = formatBytes(size)
-            val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]" else cleanTitle(name)
+            val typeTag = getFileTypeTag(name)
+            val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]$typeTag" else "${cleanTitle(name)}$typeTag"
             
             newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                 this.posterUrl = poster
@@ -140,7 +141,8 @@ class TelegramProvider : MainAPI() {
                 val poster = msg.thumbnailFileId?.takeIf { it != 0 }?.let { TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) } ?: "https://images.unsplash.com/photo-1543087903-1ac2ec7aa8c5?w=500"
                 val qual = parseSearchQuality(name, msg.caption, size)
                 val sizeStr = formatBytes(size)
-                val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]" else cleanTitle(name)
+                val typeTag = getFileTypeTag(name)
+                val displayTitle = if (size > 0) "${cleanTitle(name)} [$sizeStr]$typeTag" else "${cleanTitle(name)}$typeTag"
                 
                 newMovieSearchResponse(displayTitle, url, TvType.Movie) {
                     this.posterUrl = poster
@@ -180,9 +182,10 @@ class TelegramProvider : MainAPI() {
                 val epNum = index + 1
                 val cleanEpName = cleanTitle(name)
                 val sizeStr = formatBytes(size)
+                val typeTag = getFileTypeTag(name)
 
                 newEpisode(episodeUrl) {
-                    this.name = "$cleanEpName ($sizeStr)"
+                    this.name = "$cleanEpName ($sizeStr)$typeTag"
                     this.data = episodeUrl
                     this.season = 1
                     this.episode = epNum
@@ -236,6 +239,75 @@ class TelegramProvider : MainAPI() {
             fileId
         } ?: return false
 
+        val ext = name.substringAfterLast('.', "").lowercase()
+
+        // Check if this is a ZIP file
+        if (ext == "zip" && size > 1_000_000) {
+            val streamUrl = TelegramRepository.getZipStreamUrl(freshFileId, name, size)
+            val quality = parseQuality(name)
+            val link = newExtractorLink(
+                name = "\uD83D\uDDC4\uFE0F $name [ZIP]",
+                source = "Telegram",
+                url = streamUrl,
+                type = ExtractorLinkType.VIDEO
+            ) {
+                this.referer = ""
+                this.quality = quality
+            }
+            callback(link)
+            return true
+        }
+
+        // Check if this is part of a split file group
+        val splitPattern = Regex("""^(.+?)\.(\d{2,4})$""")
+        val partPattern = Regex("""^(.+?)\.part\d+$""", RegexOption.IGNORE_CASE)
+        val isSplit = splitPattern.matches(name) || partPattern.matches(name)
+
+        if (isSplit && chatId != 0L) {
+            // Find all sibling parts in the same chat
+            val baseName = splitPattern.find(name)?.groupValues?.get(1)
+                ?: partPattern.find(name)?.groupValues?.get(1)
+                ?: name.substringBeforeLast('.')
+
+            val siblingMessages = TelegramRepository.searchVideoMessages(baseName, limit = 100)
+                .filter { msg ->
+                    msg.chatId == chatId &&
+                    (msg.fileName.startsWith(baseName) &&
+                        (splitPattern.matches(msg.fileName) || partPattern.matches(msg.fileName)))
+                }
+
+            if (siblingMessages.size >= 2) {
+                val (groups, _) = TelegramRepository.groupSplitFiles(siblingMessages)
+                val group = groups.firstOrNull { it.baseName == baseName }
+
+                if (group != null) {
+                    // Get fresh file IDs for all parts
+                    val freshIds = group.parts.map { part ->
+                        TelegramRepository.getFreshFileId(part.chatId, part.messageId) ?: part.fileId
+                    }
+                    val partSizes = group.parts.map { it.fileSize }
+                    val totalSize = partSizes.sum()
+
+                    val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, baseName, partSizes)
+                    val quality = parseQuality(baseName)
+                    val sizeStr = formatBytes(totalSize)
+
+                    val link = newExtractorLink(
+                        name = "\uD83D\uDD17 $baseName (${group.parts.size} parts, $sizeStr) [SPLIT]",
+                        source = "Telegram",
+                        url = streamUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = ""
+                        this.quality = quality
+                    }
+                    callback(link)
+                    return true
+                }
+            }
+        }
+
+        // Regular single file streaming (original behavior)
         val streamUrl = TelegramRepository.getStreamUrl(freshFileId, name, size)
         val quality = parseQuality(name)
 
@@ -305,6 +377,17 @@ class TelegramProvider : MainAPI() {
             has("1080", "1o8o", "108o", "1o80", ".fhd.") -> 1080
             has("2160", "216o", ".4k.", ".uhd.", "ultrahd") -> 2160
             else -> 0 // Unknown
+        }
+    }
+
+    private fun getFileTypeTag(fileName: String): String {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        val splitPattern = Regex("""^\d+$""")
+        return when {
+            ext == "zip" -> " [ZIP]"
+            splitPattern.matches(ext) -> " [SPLIT]"
+            fileName.lowercase().matches(Regex(""".*\.part\d+$""")) -> " [SPLIT]"
+            else -> ""
         }
     }
 

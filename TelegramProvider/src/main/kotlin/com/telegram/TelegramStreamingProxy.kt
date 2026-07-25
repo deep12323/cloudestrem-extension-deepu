@@ -95,6 +95,9 @@ object TelegramStreamingProxy {
             var isThumbnail = false
             var urlSize = 0L
             var fileName: String? = null
+            var mergedFileIds: List<Int>? = null
+            var mergedSizes: List<Long>? = null
+            var zipInnerName: String? = null
             if (path.startsWith("/file/")) {
                 val segment = path.substringAfter("/file/").substringBefore("?")
                 fileId = segment.substringBefore("/").toIntOrNull()
@@ -126,6 +129,27 @@ object TelegramStreamingProxy {
                     }
                 }
                 isThumbnail = true
+            } else if (path.startsWith("/merged/")) {
+                val segment = path.substringAfter("/merged/").substringBefore("?")
+                val slashParts = segment.split("/", limit = 2)
+                mergedFileIds = slashParts[0].split(",").mapNotNull { it.toIntOrNull() }
+                if (slashParts.size > 1) {
+                    fileName = java.net.URLDecoder.decode(slashParts[1], "UTF-8")
+                }
+                val queryStr = path.substringAfter("?", "")
+                mergedSizes = queryStr.split("&").find { it.startsWith("sizes=") }
+                    ?.substringAfter("=")?.split(",")?.mapNotNull { it.toLongOrNull() }
+                urlSize = mergedSizes?.sum() ?: 0L
+                // Set fileId to first part for compatibility
+                fileId = mergedFileIds?.firstOrNull()
+            } else if (path.startsWith("/zip/")) {
+                val segment = path.substringAfter("/zip/").substringBefore("?")
+                val slashParts = segment.split("/", limit = 2)
+                fileId = slashParts[0].toIntOrNull()
+                zipInnerName = if (slashParts.size > 1) java.net.URLDecoder.decode(slashParts[1], "UTF-8") else null
+                val queryStr = path.substringAfter("?", "")
+                urlSize = queryStr.split("&").find { it.startsWith("size=") }
+                    ?.substringAfter("=")?.toLongOrNull() ?: 0L
             }
 
             val output = socket.getOutputStream()
@@ -163,9 +187,13 @@ object TelegramStreamingProxy {
                 }
             }
 
-            // Stream file or serve thumbnail
+            // Stream file, merged parts, zip entry, or serve thumbnail
             if (isThumbnail) {
                 serveThumbnail(fileId, output)
+            } else if (mergedFileIds != null && mergedSizes != null && mergedFileIds!!.size == mergedSizes!!.size) {
+                streamMergedFile(mergedFileIds!!, mergedSizes!!, fileName, rangeHeader, output)
+            } else if (zipInnerName != null) {
+                streamZipEntry(fileId, zipInnerName!!, rangeHeader, output, urlSize)
             } else {
                 synchronized(activeStreams) {
                     activeStreams[fileId] = (activeStreams[fileId] ?: 0) + 1
@@ -257,24 +285,7 @@ object TelegramStreamingProxy {
         val ext = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
             ?: localPath?.substringAfterLast('.', "")?.lowercase() ?: ""
             
-        val mimeType = when (ext) {
-            "mkv" -> "video/x-matroska"
-            "webm" -> "video/webm"
-            "avi" -> "video/x-msvideo"
-            "mov" -> "video/quicktime"
-            "flv" -> "video/x-flv"
-            "wmv" -> "video/x-ms-wmv"
-            "ts", "m2ts" -> "video/mp2t"
-            "mp3" -> "audio/mpeg"
-            "flac" -> "audio/flac"
-            "aac" -> "audio/aac"
-            "ogg", "opus" -> "audio/ogg"
-            "wav" -> "audio/wav"
-            "wma" -> "audio/x-ms-wma"
-            "m4a" -> "audio/mp4"
-            "aiff" -> "audio/aiff"
-            else -> "video/mp4"
-        }
+        val mimeType = getMimeType(ext)
 
         val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
         val headers = StringBuilder().apply {
@@ -330,6 +341,301 @@ object TelegramStreamingProxy {
         }
     }
 
+    private suspend fun streamMergedFile(
+        fileIds: List<Int>,
+        sizes: List<Long>,
+        fileName: String?,
+        rangeHeader: String?,
+        output: java.io.OutputStream
+    ) {
+        val totalSize = sizes.sum()
+        if (totalSize <= 0L || fileIds.isEmpty()) {
+            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
+            return
+        }
+
+        val (rangeStart, rangeEnd) = parseRange(rangeHeader)
+        val start: Long
+        val end: Long
+
+        if (rangeStart == null && rangeEnd != null) {
+            start = maxOf(0L, totalSize - rangeEnd)
+            end = totalSize - 1L
+        } else {
+            start = rangeStart ?: 0L
+            end = rangeEnd ?: (totalSize - 1L)
+        }
+        val length = end - start + 1
+
+        val ext = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() } ?: ""
+        val mimeType = getMimeType(ext)
+
+        val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
+        val headers = StringBuilder().apply {
+            append("HTTP/1.1 $status\r\n")
+            append("Accept-Ranges: bytes\r\n")
+            append("Content-Length: $length\r\n")
+            if (rangeHeader != null) {
+                append("Content-Range: bytes $start-$end/$totalSize\r\n")
+            }
+            append("Content-Type: $mimeType\r\n")
+            append("Connection: close\r\n\r\n")
+        }.toString()
+
+        output.write(headers.toByteArray())
+
+        // Build cumulative offset table: partStartOffsets[i] = sum of sizes[0..i-1]
+        val partStartOffsets = LongArray(sizes.size)
+        for (i in 1 until sizes.size) {
+            partStartOffsets[i] = partStartOffsets[i - 1] + sizes[i - 1]
+        }
+
+        var offset = start
+        while (offset <= end && running) {
+            // Find which part this offset belongs to
+            var partIndex = partStartOffsets.indexOfLast { it <= offset }
+            if (partIndex < 0) partIndex = 0
+
+            val partFileId = fileIds[partIndex]
+            val partOffset = offset - partStartOffsets[partIndex]
+            val partRemaining = sizes[partIndex] - partOffset
+            val globalRemaining = end - offset + 1
+            val chunkSize = minOf(CHUNK_SIZE.toLong(), partRemaining, globalRemaining).toInt()
+
+            // Ensure download is active for this part
+            val prefetchBytes = when {
+                prefetchSizeMb == -1L -> 0L
+                prefetchSizeMb <= 0L -> chunkSize.toLong()
+                else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
+            }
+            val alignedPartOffset = partOffset - (partOffset % (1024 * 1024))
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = partFileId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = alignedPartOffset
+                    req.limit = prefetchBytes
+                    req.synchronous = false
+                })
+            }
+
+            val bytes = downloadChunk(partFileId, partOffset, chunkSize)
+            if (bytes == null || bytes.isEmpty()) break
+            output.write(bytes)
+            output.flush()
+            offset += bytes.size
+        }
+    }
+
+    private suspend fun streamZipEntry(
+        fileId: Int,
+        innerFileName: String,
+        rangeHeader: String?,
+        output: java.io.OutputStream,
+        zipSize: Long
+    ) {
+        val totalZipSize = if (zipSize > 0L) zipSize else {
+            val info = getFileInfo(fileId)
+            info?.second?.takeIf { it > 0 } ?: info?.third?.takeIf { it > 0 } ?: 0L
+        }
+
+        if (totalZipSize <= 0L) {
+            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
+            return
+        }
+
+        // Ensure download is started for the ZIP file
+        runCatching {
+            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                req.fileId = fileId
+                req.priority = DOWNLOAD_PRIORITY
+                req.offset = 0
+                req.limit = 0 // download entire file
+                req.synchronous = false
+            })
+        }
+
+        // Step 1: Read EOCD (End of Central Directory) - last 22 bytes minimum
+        // EOCD signature: 0x06054b50
+        val eocdSearchSize = minOf(65557L, totalZipSize).toInt() // Max EOCD size with comment
+        val eocdOffset = totalZipSize - eocdSearchSize
+        val eocdData = downloadChunk(fileId, eocdOffset, eocdSearchSize)
+        if (eocdData == null || eocdData.size < 22) {
+            output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read ZIP EOCD".toByteArray())
+            return
+        }
+
+        // Find EOCD signature (search backwards)
+        var eocdPos = -1
+        for (i in eocdData.size - 22 downTo 0) {
+            if (eocdData[i] == 0x50.toByte() &&
+                eocdData[i + 1] == 0x4B.toByte() &&
+                eocdData[i + 2] == 0x05.toByte() &&
+                eocdData[i + 3] == 0x06.toByte()
+            ) {
+                eocdPos = i
+                break
+            }
+        }
+
+        if (eocdPos < 0) {
+            output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nNo EOCD signature found - not a valid ZIP".toByteArray())
+            return
+        }
+
+        // Parse EOCD
+        fun readUInt16(data: ByteArray, off: Int): Int =
+            (data[off].toInt() and 0xFF) or ((data[off + 1].toInt() and 0xFF) shl 8)
+        fun readUInt32(data: ByteArray, off: Int): Long =
+            (data[off].toInt() and 0xFF).toLong() or
+            ((data[off + 1].toInt() and 0xFF).toLong() shl 8) or
+            ((data[off + 2].toInt() and 0xFF).toLong() shl 16) or
+            ((data[off + 3].toInt() and 0xFF).toLong() shl 24)
+
+        val cdSize = readUInt32(eocdData, eocdPos + 12)
+        val cdOffset = readUInt32(eocdData, eocdPos + 16)
+
+        // Step 2: Read the Central Directory
+        val cdData = downloadChunk(fileId, cdOffset, cdSize.toInt())
+        if (cdData == null || cdData.isEmpty()) {
+            output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read Central Directory".toByteArray())
+            return
+        }
+
+        // Step 3: Parse CD entries to find the target file
+        // Central Directory file header signature: 0x02014b50
+        data class ZipEntry(
+            val name: String,
+            val compressionMethod: Int,
+            val compressedSize: Long,
+            val uncompressedSize: Long,
+            val localHeaderOffset: Long
+        )
+
+        val entries = mutableListOf<ZipEntry>()
+        var pos = 0
+        while (pos + 46 <= cdData.size) {
+            if (cdData[pos] != 0x50.toByte() || cdData[pos + 1] != 0x4B.toByte() ||
+                cdData[pos + 2] != 0x01.toByte() || cdData[pos + 3] != 0x02.toByte()
+            ) break
+
+            val compressionMethod = readUInt16(cdData, pos + 10)
+            val compressedSize = readUInt32(cdData, pos + 20)
+            val uncompressedSize = readUInt32(cdData, pos + 24)
+            val nameLength = readUInt16(cdData, pos + 28)
+            val extraLength = readUInt16(cdData, pos + 30)
+            val commentLength = readUInt16(cdData, pos + 32)
+            val localHeaderOffset = readUInt32(cdData, pos + 42)
+
+            val nameBytes = cdData.copyOfRange(pos + 46, pos + 46 + nameLength)
+            val name = String(nameBytes, Charsets.UTF_8)
+
+            entries.add(ZipEntry(name, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset))
+            pos += 46 + nameLength + extraLength + commentLength
+        }
+
+        // Find the target entry (case-insensitive match, also try matching just the filename part)
+        val target = entries.find { it.name.equals(innerFileName, ignoreCase = true) }
+            ?: entries.find { it.name.substringAfterLast('/').equals(innerFileName, ignoreCase = true) }
+            ?: entries.find { 
+                val entryExt = it.name.substringAfterLast('.', "").lowercase()
+                entryExt in listOf("mkv", "mp4", "avi", "mov", "webm", "flv", "ts", "m2ts",
+                    "mp3", "flac", "aac", "ogg", "opus", "wav", "m4a")
+            }
+
+        if (target == null) {
+            output.write("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nFile '$innerFileName' not found in ZIP archive".toByteArray())
+            return
+        }
+
+        if (target.compressionMethod != 0) {
+            output.write("HTTP/1.1 422 Unprocessable Entity\r\nContent-Type: text/plain\r\n\r\nFile '${target.name}' is compressed (method ${target.compressionMethod}). Only STORED (uncompressed) files can be streamed.".toByteArray())
+            return
+        }
+
+        // Step 4: Read the Local File Header to find the actual data offset
+        // Local file header: 30 bytes fixed + variable name + extra
+        val localHeader = downloadChunk(fileId, target.localHeaderOffset, 30)
+        if (localHeader == null || localHeader.size < 30) {
+            output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read local file header".toByteArray())
+            return
+        }
+        val localNameLen = readUInt16(localHeader, 26)
+        val localExtraLen = readUInt16(localHeader, 28)
+        val dataOffset = target.localHeaderOffset + 30 + localNameLen + localExtraLen
+
+        val innerFileSize = target.uncompressedSize // Same as compressedSize for STORED
+
+        Log.d(TAG, "ZIP streaming: entry='${target.name}' size=$innerFileSize dataOffset=$dataOffset compressionMethod=${target.compressionMethod}")
+
+        // Step 5: Stream the inner file data with HTTP range support
+        val (rangeStart, rangeEnd) = parseRange(rangeHeader)
+        val reqStart: Long
+        val reqEnd: Long
+
+        if (rangeStart == null && rangeEnd != null) {
+            reqStart = maxOf(0L, innerFileSize - rangeEnd)
+            reqEnd = innerFileSize - 1L
+        } else {
+            reqStart = rangeStart ?: 0L
+            reqEnd = rangeEnd ?: (innerFileSize - 1L)
+        }
+        val length = reqEnd - reqStart + 1
+
+        val ext = target.name.substringAfterLast('.', "").lowercase()
+        val mimeType = getMimeType(ext)
+
+        val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
+        val headers = StringBuilder().apply {
+            append("HTTP/1.1 $status\r\n")
+            append("Accept-Ranges: bytes\r\n")
+            append("Content-Length: $length\r\n")
+            if (rangeHeader != null) {
+                append("Content-Range: bytes $reqStart-$reqEnd/$innerFileSize\r\n")
+            }
+            append("Content-Type: $mimeType\r\n")
+            append("Connection: close\r\n\r\n")
+        }.toString()
+
+        output.write(headers.toByteArray())
+
+        // Stream the data — offset into the actual ZIP file is dataOffset + reqStart
+        var offset = reqStart
+        var activeDownloadEnd = -1L
+        while (offset <= reqEnd && running) {
+            val chunkSize = minOf(CHUNK_SIZE.toLong(), reqEnd - offset + 1).toInt()
+            val zipOffset = dataOffset + offset
+
+            if (zipOffset >= activeDownloadEnd) {
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                }
+                val tdlibPrefetch = when {
+                    prefetchSizeMb == -1L -> 0L
+                    prefetchSizeMb <= 0L -> chunkSize.toLong()
+                    else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
+                }
+                val alignedOffset = zipOffset - (zipOffset % (1024 * 1024))
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = fileId
+                        req.priority = DOWNLOAD_PRIORITY
+                        req.offset = alignedOffset
+                        req.limit = tdlibPrefetch
+                        req.synchronous = false
+                    })
+                }
+                activeDownloadEnd = if (tdlibPrefetch == 0L) totalZipSize else alignedOffset + tdlibPrefetch
+            }
+
+            val bytes = downloadChunk(fileId, zipOffset, chunkSize)
+            if (bytes == null || bytes.isEmpty()) break
+            output.write(bytes)
+            output.flush()
+            offset += bytes.size
+        }
+    }
+
     private suspend fun deleteFile(fileId: Int) {
         runCatching {
             TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
@@ -350,6 +656,18 @@ object TelegramStreamingProxy {
 
     fun getThumbnailUrl(chatId: Long, messageId: Long): String {
         return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId?token=$authToken"
+    }
+
+    fun getMergedUrl(fileIds: List<Int>, fileName: String, sizes: List<Long>): String {
+        val ids = fileIds.joinToString(",")
+        val szs = sizes.joinToString(",")
+        val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
+        return "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs&token=$authToken"
+    }
+
+    fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String {
+        val encodedInner = java.net.URLEncoder.encode(innerFileName, "UTF-8").replace("+", "%20")
+        return "http://127.0.0.1:$port/zip/$fileId/$encodedInner?size=$zipSize&token=$authToken"
     }
 
     private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream) {
@@ -462,5 +780,24 @@ object TelegramStreamingProxy {
         } catch (e: Exception) {
             false
         }
+    }
+
+    private fun getMimeType(ext: String): String = when (ext) {
+        "mkv" -> "video/x-matroska"
+        "webm" -> "video/webm"
+        "avi" -> "video/x-msvideo"
+        "mov" -> "video/quicktime"
+        "flv" -> "video/x-flv"
+        "wmv" -> "video/x-ms-wmv"
+        "ts", "m2ts" -> "video/mp2t"
+        "mp3" -> "audio/mpeg"
+        "flac" -> "audio/flac"
+        "aac" -> "audio/aac"
+        "ogg", "opus" -> "audio/ogg"
+        "wav" -> "audio/wav"
+        "wma" -> "audio/x-ms-wma"
+        "m4a" -> "audio/mp4"
+        "aiff" -> "audio/aiff"
+        else -> "video/mp4"
     }
 }

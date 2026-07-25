@@ -26,6 +26,17 @@ data class ForumTopicData(
     val thumbnailMessageId: Long = 0L
 )
 
+data class SplitFileGroup(
+    val baseName: String,
+    val parts: List<TelegramVideoMessage>,  // ordered by part number
+    val totalSize: Long
+)
+
+data class ZipFileEntry(
+    val message: TelegramVideoMessage,
+    val innerFileName: String  // will be discovered during streaming
+)
+
 object TelegramRepository {
     private const val TAG = "TelegramRepository"
 
@@ -712,12 +723,14 @@ object TelegramRepository {
                 val hasAudioExt = ext in listOf("mp3", "flac", "aac", "ogg", "opus", "wav", "wma", "m4a", "alac", "aiff", "ape", "wv")
                 val hasAudioMime = mime.startsWith("audio/")
 
-                val isArchiveOrSplit = ext in listOf("rar", "zip", "7z", "tar", "gz", "bz2") || ext.matches(Regex("^\\d+$"))
+                val isArchiveOrSplit = ext in listOf("rar", "7z", "tar", "gz", "bz2")
+                val isSplitFile = ext.matches(Regex("^\\d+$")) || filename.lowercase().matches(Regex(""".*\.part\d+$"""))
+                val isZipFile = ext == "zip"
                 
-                val isVideo = !isArchiveOrSplit && (hasVideoExt || hasVideoMime || hasVideoKeywords)
-                val isAudio = !isArchiveOrSplit && (hasAudioExt || hasAudioMime)
+                val isVideo = !isArchiveOrSplit && !isSplitFile && !isZipFile && (hasVideoExt || hasVideoMime || hasVideoKeywords)
+                val isAudio = !isArchiveOrSplit && !isSplitFile && !isZipFile && (hasAudioExt || hasAudioMime)
                 
-                if (!isVideo && !isAudio) return
+                if (!isVideo && !isAudio && !isSplitFile && !isZipFile) return
 
                 val key = filename to content.document.document.size
                 if (seen.add(key)) {
@@ -805,4 +818,68 @@ object TelegramRepository {
             null
         }
     }
+
+    /**
+     * Detects split file groups from a list of messages.
+     * Split files have numeric extensions (.001, .002) or patterns like .part1, .part01.
+     * Returns a pair of (grouped split files, remaining individual files).
+     */
+    fun groupSplitFiles(messages: List<TelegramVideoMessage>): Pair<List<SplitFileGroup>, List<TelegramVideoMessage>> {
+        val splitPattern = Regex("""^(.+?)\.(\d{2,4})$""")  // matches file.001, file.02, file.0001
+        val partPattern = Regex("""^(.+?)\.part(\d+)$""", RegexOption.IGNORE_CASE)  // matches file.part1, file.Part01
+        
+        val groups = mutableMapOf<String, MutableList<Pair<Int, TelegramVideoMessage>>>()
+        val singles = mutableListOf<TelegramVideoMessage>()
+        
+        for (msg in messages) {
+            val name = msg.fileName
+            val splitMatch = splitPattern.find(name)
+            val partMatch = partPattern.find(name)
+            
+            when {
+                splitMatch != null -> {
+                    val baseName = splitMatch.groupValues[1]
+                    val partNum = splitMatch.groupValues[2].toIntOrNull() ?: 0
+                    groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
+                }
+                partMatch != null -> {
+                    val baseName = partMatch.groupValues[1]
+                    val partNum = partMatch.groupValues[2].toIntOrNull() ?: 0
+                    groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
+                }
+                else -> singles.add(msg)
+            }
+        }
+        
+        val splitGroups = mutableListOf<SplitFileGroup>()
+        for ((baseName, parts) in groups) {
+            if (parts.size < 2) {
+                // Single part with numeric extension - treat as individual
+                singles.addAll(parts.map { it.second })
+                continue
+            }
+            val sorted = parts.sortedBy { it.first }.map { it.second }
+            splitGroups.add(SplitFileGroup(
+                baseName = baseName,
+                parts = sorted,
+                totalSize = sorted.sumOf { it.fileSize }
+            ))
+        }
+        
+        return splitGroups to singles
+    }
+
+    /**
+     * Check if a file is a ZIP that could contain streamable media.
+     */
+    fun isStreamableZip(msg: TelegramVideoMessage): Boolean {
+        val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+        return ext == "zip" && msg.fileSize > 1_000_000 // Only ZIPs > 1MB likely contain media
+    }
+
+    fun getMergedStreamUrl(fileIds: List<Int>, fileName: String, sizes: List<Long>): String =
+        TelegramStreamingProxy.getMergedUrl(fileIds, fileName, sizes)
+
+    fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String =
+        TelegramStreamingProxy.getZipStreamUrl(fileId, innerFileName, zipSize)
 }
