@@ -27,14 +27,12 @@ object TelegramStreamingProxy {
     @Volatile private var running = false
     private val activeStreams = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     @Volatile private var lastStreamedFileId: Int? = null
-    @Volatile private var authToken: String = ""
 
     fun start() {
         if (serverSocket != null) return
         port = findFreePort()
         serverSocket = ServerSocket(port)
         running = true
-        authToken = java.util.UUID.randomUUID().toString()
         Log.d(TAG, "Streaming proxy starting on port $port")
 
         thread(name = "TelegramProxyListener") {
@@ -69,9 +67,6 @@ object TelegramStreamingProxy {
     }
 
     private suspend fun handleClient(socket: Socket) {
-        val clientJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
-        var watchdogJob: kotlinx.coroutines.Job? = null
-
         try {
             socket.soTimeout = 30000
             val inputStream = socket.getInputStream()
@@ -81,16 +76,6 @@ object TelegramStreamingProxy {
             if (parts.size < 2) return
             val path = parts[1] // /file/{fileId} or /thumbnail/{fileId}
 
-            val queryStrAll = path.substringAfter("?", "")
-            val token = queryStrAll.split("&").find { it.startsWith("token=") }?.substringAfter("=")
-            if (authToken.isNotEmpty() && token != null && token != authToken) {
-                val output = socket.getOutputStream()
-                output.write("HTTP/1.1 403 Forbidden\r\n\r\n".toByteArray())
-                output.close()
-                socket.close()
-                return
-            }
-
             var fileId: Int? = null
             var isThumbnail = false
             var urlSize = 0L
@@ -98,6 +83,7 @@ object TelegramStreamingProxy {
             var mergedFileIds: List<Int>? = null
             var mergedSizes: List<Long>? = null
             var zipInnerName: String? = null
+
             if (path.startsWith("/file/")) {
                 val segment = path.substringAfter("/file/").substringBefore("?")
                 fileId = segment.substringBefore("/").toIntOrNull()
@@ -140,7 +126,6 @@ object TelegramStreamingProxy {
                 mergedSizes = queryStr.split("&").find { it.startsWith("sizes=") }
                     ?.substringAfter("=")?.split(",")?.mapNotNull { it.toLongOrNull() }
                 urlSize = mergedSizes?.sum() ?: 0L
-                // Set fileId to first part for compatibility
                 fileId = mergedFileIds?.firstOrNull()
             } else if (path.startsWith("/zip/")) {
                 val segment = path.substringAfter("/zip/").substringBefore("?")
@@ -168,26 +153,6 @@ object TelegramStreamingProxy {
                 }
             }
 
-            // Start watchdog AFTER headers are fully parsed to avoid InputStream race.
-            // ExoPlayer sends no more data after headers, so read() returning -1 means disconnect.
-            watchdogJob = CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    while (clientJob?.isActive == true) {
-                        try {
-                            val res = reader.read()
-                            if (res == -1) break
-                        } catch (e: java.net.SocketTimeoutException) {
-                            continue
-                        } catch (e: Exception) {
-                            break
-                        }
-                    }
-                } finally {
-                    clientJob?.cancel()
-                }
-            }
-
-            // Stream file, merged parts, zip entry, or serve thumbnail
             if (isThumbnail) {
                 serveThumbnail(fileId, output)
             } else if (mergedFileIds != null && mergedSizes != null && mergedFileIds!!.size == mergedSizes!!.size) {
@@ -209,16 +174,12 @@ object TelegramStreamingProxy {
                     if (count <= 0) {
                         synchronized(activeStreams) { activeStreams.remove(fileId) }
                         
-                        // Grace period before stopping download to allow ExoPlayer seek/probe connections to finish
                         scope.launch {
-                            delay(3000)
-                            if ((activeStreams[fileId] ?: 0) <= 0) {
-                                runCatching {
-                                    TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
-                                        req.fileId = fileId
-                                        req.onlyIfPending = false
-                                    })
-                                }
+                            runCatching {
+                                TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
+                                    req.fileId = fileId
+                                    req.onlyIfPending = false
+                                })
                             }
                         }
                         
@@ -238,7 +199,6 @@ object TelegramStreamingProxy {
         } catch (e: Exception) {
             Log.e(TAG, "Error handling client: ${e.message}", e)
         } finally {
-            watchdogJob?.cancel()
             try { socket.close() } catch (_: Exception) {}
         }
     }
@@ -311,9 +271,6 @@ object TelegramStreamingProxy {
             val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
 
             if (offset >= activeDownloadEnd) {
-                // Cancel previous download range before starting a new one.
-                // Without this, TDLib accumulates successive DownloadFile ranges
-                // and downloads far beyond the configured buffer size.
                 runCatching {
                     TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
                 }
@@ -420,7 +377,6 @@ object TelegramStreamingProxy {
 
         val ext = fileName?.substringAfterLast('.', "")?.lowercase() ?: ""
         if (ext == "zip") {
-            // Merged ZIP file: parse ZIP Central Directory and stream inner video file
             streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output)
             return
         }
@@ -492,7 +448,6 @@ object TelegramStreamingProxy {
             return
         }
 
-        // Ensure downloads started for all parts
         for (fId in fileIds) {
             runCatching {
                 TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
@@ -505,7 +460,6 @@ object TelegramStreamingProxy {
             }
         }
 
-        // Step 1: Read EOCD (End of Central Directory)
         val eocdSearchSize = minOf(65557L, totalZipSize).toInt()
         val eocdOffset = totalZipSize - eocdSearchSize
         val eocdData = readBufferFromMerged(fileIds, sizes, eocdOffset, eocdSearchSize)
@@ -514,7 +468,6 @@ object TelegramStreamingProxy {
             return
         }
 
-        // Find EOCD signature (0x06054b50) searching backwards
         var eocdPos = -1
         for (i in eocdData.size - 22 downTo 0) {
             if (eocdData[i] == 0x50.toByte() &&
@@ -545,7 +498,6 @@ object TelegramStreamingProxy {
         var cdSize = readUInt32(eocdData, eocdPos + 12)
         var cdOffset = readUInt32(eocdData, eocdPos + 16)
 
-        // Check for Zip64 Locator (0x07064b50) before EOCD
         var isZip64 = false
         if (cdOffset == 0xFFFFFFFFL || cdSize == 0xFFFFFFFFL || eocdPos >= 20) {
             val locatorPos = eocdPos - 20
@@ -568,14 +520,12 @@ object TelegramStreamingProxy {
             }
         }
 
-        // Step 2: Read Central Directory
         val cdData = readBufferFromMerged(fileIds, sizes, cdOffset, cdSize.toInt())
         if (cdData == null || cdData.isEmpty()) {
             output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read Central Directory".toByteArray())
             return
         }
 
-        // Step 3: Parse CD entries
         data class ZipEntry(
             val name: String,
             val compressionMethod: Int,
@@ -602,7 +552,6 @@ object TelegramStreamingProxy {
             val nameBytes = cdData.copyOfRange(pos + 46, pos + 46 + nameLength)
             val entryName = String(nameBytes, Charsets.UTF_8)
 
-            // Parse Zip64 extra field if present
             if (extraLength > 0 && pos + 46 + nameLength + extraLength <= cdData.size) {
                 var extraPos = pos + 46 + nameLength
                 val extraEnd = extraPos + extraLength
@@ -639,18 +588,15 @@ object TelegramStreamingProxy {
             return
         }
 
-        // Smart Target Selection:
         val mediaExtensions = setOf("mkv", "mp4", "avi", "mov", "webm", "flv", "wmv", "ts", "m2ts", "m4v", "3gp", "mp3", "flac", "aac", "ogg", "opus", "wav", "m4a")
 
         var target: ZipEntry? = null
 
-        // 1. If requested inner name is not ending with .zip, try exact or filename match
         if (!requestedInnerName.isNullOrBlank() && !requestedInnerName.lowercase().endsWith(".zip")) {
             target = entries.find { it.name.equals(requestedInnerName, ignoreCase = true) }
                 ?: entries.find { it.name.substringAfterLast('/').equals(requestedInnerName, ignoreCase = true) }
         }
 
-        // 2. Otherwise pick the largest media file inside the ZIP archive
         if (target == null) {
             val mediaEntries = entries.filter { 
                 val ext = it.name.substringAfterLast('.', "").lowercase()
@@ -670,7 +616,6 @@ object TelegramStreamingProxy {
             return
         }
 
-        // Step 4: Read Local Header for target
         val localHeader = readBufferFromMerged(fileIds, sizes, target.localHeaderOffset, 30)
         if (localHeader == null || localHeader.size < 30) {
             output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read local file header".toByteArray())
@@ -684,7 +629,6 @@ object TelegramStreamingProxy {
 
         Log.d(TAG, "ZIP streaming entry '${target.name}' size=$innerFileSize dataOffset=$dataOffset isZip64=$isZip64")
 
-        // Step 5: Stream target inner file data with HTTP range support
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
         val reqStart: Long
         val reqEnd: Long
@@ -715,7 +659,6 @@ object TelegramStreamingProxy {
 
         output.write(headers.toByteArray())
 
-        // Stream inner video content bytes from dataOffset + reqStart
         var offset = reqStart
         while (offset <= reqEnd && running) {
             val chunkSize = minOf(CHUNK_SIZE.toLong(), reqEnd - offset + 1).toInt()
@@ -744,23 +687,23 @@ object TelegramStreamingProxy {
 
     fun getUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String {
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize&token=$authToken"
+        return "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize"
     }
 
     fun getThumbnailUrl(chatId: Long, messageId: Long): String {
-        return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId?token=$authToken"
+        return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId"
     }
 
     fun getMergedUrl(fileIds: List<Int>, fileName: String, sizes: List<Long>): String {
         val ids = fileIds.joinToString(",")
         val szs = sizes.joinToString(",")
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs&token=$authToken"
+        return "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs"
     }
 
     fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String {
         val encodedInner = java.net.URLEncoder.encode(innerFileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/zip/$fileId/$encodedInner?size=$zipSize&token=$authToken"
+        return "http://127.0.0.1:$port/zip/$fileId/$encodedInner?size=$zipSize"
     }
 
     private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream) {
@@ -828,25 +771,6 @@ object TelegramStreamingProxy {
                         ) as? TdApi.Data
                     } catch (e: Exception) { null }
                     return@withTimeoutOrNull finalData?.data
-                }
-                
-                // If download is no longer active (e.g. cancelled by previous seek probe), re-trigger DownloadFile
-                if ((attempts % 10 == 0 || attempts == 0) && file != null && !file.local.isDownloadingActive && !file.local.isDownloadingCompleted) {
-                    val tdlibPrefetch = when {
-                        prefetchSizeMb == -1L -> 0L
-                        prefetchSizeMb <= 0L -> limit.toLong()
-                        else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
-                    }
-                    val alignedOffset = offset - (offset % (1024 * 1024))
-                    runCatching {
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = fileId
-                            req.priority = DOWNLOAD_PRIORITY
-                            req.offset = alignedOffset
-                            req.limit = tdlibPrefetch
-                            req.synchronous = false
-                        })
-                    }
                 }
                 
                 delay(POLL_INTERVAL_MS)
