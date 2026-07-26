@@ -117,8 +117,10 @@ class TeleflixProvider : MainAPI() {
         if (isSeries) {
             val episodes = meta.videos?.map { video ->
                 val season = video.season ?: 1
-                val ep = video.episode ?: 1
-                val epTitle = video.title?.trim()?.takeIf { it.isNotBlank() } ?: "Episode $ep"
+                val ep = video.episode ?: video.number ?: 1
+                val rawTitle = video.name?.trim() ?: video.title?.trim()
+                val epTitle = rawTitle?.takeIf { it.isNotBlank() } ?: "Episode $ep"
+                val epDesc = video.overview?.trim() ?: video.description?.trim() ?: "Season $season Episode $ep"
                 // We pass a custom data string to loadLinks containing the show name and episode
                 val data = "${meta.name} S${season.toString().padStart(2, '0')}E${ep.toString().padStart(2, '0')}"
                 newEpisode(data) {
@@ -127,7 +129,7 @@ class TeleflixProvider : MainAPI() {
                     this.season = season
                     this.episode = ep
                     this.posterUrl = video.thumbnail ?: meta.poster
-                    this.description = "Season $season Episode $ep"
+                    this.description = epDesc
                 }
             } ?: emptyList()
 
@@ -469,28 +471,37 @@ class TeleflixProvider : MainAPI() {
     }
 
     // Data classes for Cinemeta API
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     private data class CinemetaCatalog(val metas: List<CinemetaMeta> = emptyList())
+    
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     private data class CinemetaMetaResponse(val meta: CinemetaMeta?)
     
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     private data class CinemetaMeta(
         val id: String,
-        val type: String?,
+        val type: String? = null,
         val name: String,
-        val poster: String?,
-        val background: String?,
-        val description: String?,
-        val year: String?,
+        val poster: String? = null,
+        val background: String? = null,
+        val description: String? = null,
+        val year: String? = null,
         val imdbRating: String? = null,
         val rating: String? = null,
         val genres: List<String>? = null,
         val videos: List<CinemetaVideo>? = null
     )
 
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     private data class CinemetaVideo(
         val id: String,
-        val title: String?,
-        val season: Int?,
-        val episode: Int?,
-        val thumbnail: String?
+        val name: String? = null,
+        val title: String? = null,
+        val season: Int? = null,
+        val episode: Int? = null,
+        val number: Int? = null,
+        val thumbnail: String? = null,
+        val overview: String? = null,
+        val description: String? = null
     )
 }
