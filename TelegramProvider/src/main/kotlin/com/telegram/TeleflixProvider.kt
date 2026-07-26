@@ -118,11 +118,11 @@ class TeleflixProvider : MainAPI() {
             val episodes = meta.videos?.map { video ->
                 val season = video.season ?: 1
                 val ep = video.episode ?: 1
-                val epTitle = video.title?.takeIf { it.isNotBlank() } ?: "Episode $ep"
+                val epTitle = video.title?.trim()?.takeIf { it.isNotBlank() } ?: "Episode $ep"
                 // We pass a custom data string to loadLinks containing the show name and episode
                 val data = "${meta.name} S${season.toString().padStart(2, '0')}E${ep.toString().padStart(2, '0')}"
-                newEpisode(epTitle) {
-                    this.name = "S${season}E${ep}: $epTitle"
+                newEpisode(data) {
+                    this.name = epTitle
                     this.data = data
                     this.season = season
                     this.episode = ep
