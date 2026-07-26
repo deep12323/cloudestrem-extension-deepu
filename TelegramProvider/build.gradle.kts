@@ -53,7 +53,14 @@ afterEvaluate {
             val kotlinClassesDir = file("build/tmp/kotlin-classes/debug")
             if (javaClassesDir.exists()) {
                 println("Copying Java compiled classes from ${javaClassesDir.absolutePath} to ${kotlinClassesDir.absolutePath}...")
-                javaClassesDir.copyRecursively(kotlinClassesDir, overwrite = true)
+                javaClassesDir.walkTopDown().forEach { file ->
+                    if (file.isFile && !file.name.startsWith("BuildConfig")) {
+                        val relativePath = file.relativeTo(javaClassesDir)
+                        val targetFile = File(kotlinClassesDir, relativePath.path)
+                        targetFile.parentFile.mkdirs()
+                        file.copyTo(targetFile, overwrite = true)
+                    }
+                }
             }
         }
     }

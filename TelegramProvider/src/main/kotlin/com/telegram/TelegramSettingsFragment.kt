@@ -285,7 +285,7 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                         Toast.makeText(context, "Catalogue channels saved!", Toast.LENGTH_SHORT).show()
                         
                         // Force TDLib to sync chats so raw IDs are cached (both Main and Archive)
-                        kotlinx.coroutines.GlobalScope.launch {
+                        viewLifecycleOwner.lifecycleScope.launch {
                             for (chatList in listOf(org.drinkless.tdlib.TdApi.ChatListMain(), org.drinkless.tdlib.TdApi.ChatListArchive())) {
                                 try {
                                     var loaded = false
