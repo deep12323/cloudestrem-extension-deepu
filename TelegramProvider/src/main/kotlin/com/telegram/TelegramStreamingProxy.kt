@@ -300,8 +300,19 @@ object TelegramStreamingProxy {
 
             val bytes = downloadChunk(fileId, offset, chunkSize)
             if (bytes == null || bytes.isEmpty()) break
-            output.write(bytes)
-            output.flush()
+            try {
+                output.write(bytes)
+                output.flush()
+            } catch (e: IOException) {
+                // Player exited or disconnected! Immediately stop TDLib download
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
+                        req.fileId = fileId
+                        req.onlyIfPending = false
+                    })
+                }
+                break
+            }
             offset += bytes.size
         }
     }
@@ -779,8 +790,8 @@ object TelegramStreamingProxy {
                 }
 
                 // If download is no longer active (e.g. cancelled by previous MKV header/cues probe connection closing),
-                // automatically re-trigger DownloadFile for the requested offset immediately!
-                if ((attempts == 0 || attempts % 5 == 0) && file != null && !file.local.isDownloadingActive && !file.local.isDownloadingCompleted) {
+                // re-trigger DownloadFile once and allow 3 seconds for TDLib to fetch without resetting
+                if ((attempts == 0 || attempts % 30 == 0) && file != null && !file.local.isDownloadingActive && !file.local.isDownloadingCompleted) {
                     val tdlibPrefetch = when {
                         prefetchSizeMb == -1L -> 0L
                         prefetchSizeMb <= 0L -> limit.toLong()
