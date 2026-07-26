@@ -3,6 +3,7 @@ package com.telegram
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -26,6 +27,7 @@ object TelegramStreamingProxy {
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
     private val activeStreams = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    private val activeFileJobs = java.util.concurrent.ConcurrentHashMap<Int, Job>()
     @Volatile private var lastStreamedFileId: Int? = null
 
     fun start() {
@@ -53,6 +55,8 @@ object TelegramStreamingProxy {
 
     fun stop() {
         running = false
+        activeFileJobs.values.forEach { runCatching { it.cancel() } }
+        activeFileJobs.clear()
         lastStreamedFileId?.let { scope.launch { deleteFile(it) } }
         lastStreamedFileId = null
         try {
@@ -193,103 +197,116 @@ object TelegramStreamingProxy {
     }
 
     private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long) {
-        val prev = lastStreamedFileId
-        if (prev != null && prev != fileId && (activeStreams[prev] ?: 0) <= 0) {
-            if (!isCacheEnabled()) {
-                scope.launch { deleteFile(prev) }
+        val currentJob = kotlin.coroutines.coroutineContext[Job]
+        if (currentJob != null) {
+            val previousJob = activeFileJobs.put(fileId, currentJob)
+            if (previousJob != null && previousJob !== currentJob && previousJob.isActive) {
+                Log.d(TAG, "Cancelling previous stream job for fileId=$fileId due to new range request: $rangeHeader")
+                previousJob.cancel()
             }
         }
-        lastStreamedFileId = fileId
 
-        // Cancel any active download for this file so TDLib respects our new offset.
-        // This is the ONLY place we cancel — never in cleanup/finally blocks
-        // (to avoid race conditions with the next connection's DownloadFile).
-        runCatching {
-            TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-        }
+        try {
+            val prev = lastStreamedFileId
+            if (prev != null && prev != fileId && (activeStreams[prev] ?: 0) <= 0) {
+                if (!isCacheEnabled()) {
+                    scope.launch { deleteFile(prev) }
+                }
+            }
+            lastStreamedFileId = fileId
 
-        val (rangeStart, rangeEnd) = parseRange(rangeHeader)
+            // Cancel any active download for this file so TDLib respects our new offset.
+            runCatching {
+                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+            }
 
-        // Get file info
-        val fileInfo = getFileInfo(fileId)
-        val exactSize = fileInfo?.second?.takeIf { it > 0 } ?: urlSize.takeIf { it > 0 }
-        val totalSize = exactSize ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
-        val localPath = fileInfo?.first
-        
-        Log.d(TAG, "Streaming fileId=$fileId totalSize=$totalSize range=$rangeHeader prefetchMb=$prefetchSizeMb")
+            val (rangeStart, rangeEnd) = parseRange(rangeHeader)
 
-        if (totalSize <= 0L) {
-            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
-            return
-        }
-
-        val start: Long
-        val end: Long
-
-        if (rangeStart == null && rangeEnd != null) {
-            // Suffix byte range: e.g., bytes=-500 means the last 500 bytes
-            start = maxOf(0L, totalSize - rangeEnd)
-            end = totalSize - 1L
-        } else {
-            start = rangeStart ?: 0L
-            end = rangeEnd ?: (totalSize - 1L)
-        }
-        val length = end - start + 1
-
-        val ext = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
-            ?: localPath?.substringAfterLast('.', "")?.lowercase() ?: ""
+            // Get file info
+            val fileInfo = getFileInfo(fileId)
+            val exactSize = fileInfo?.second?.takeIf { it > 0 } ?: urlSize.takeIf { it > 0 }
+            val totalSize = exactSize ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
+            val localPath = fileInfo?.first
             
-        val mimeType = getMimeType(ext)
+            Log.d(TAG, "Streaming fileId=$fileId totalSize=$totalSize range=$rangeHeader prefetchMb=$prefetchSizeMb")
 
-        val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
-        val headers = StringBuilder().apply {
-            append("HTTP/1.1 $status\r\n")
-            append("Accept-Ranges: bytes\r\n")
-            append("Content-Length: $length\r\n")
-            if (rangeHeader != null) {
-                append("Content-Range: bytes $start-$end/$totalSize\r\n")
-            }
-            append("Content-Type: $mimeType\r\n")
-            append("Connection: close\r\n\r\n")
-        }.toString()
-
-        output.write(headers.toByteArray())
-
-        var activeDownloadEnd = -1L
-
-        var offset = start
-        while (offset <= end && running) {
-            val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
-
-            if (offset >= activeDownloadEnd) {
-                // Cancel current range before starting a new one so TDLib
-                // doesn't accumulate multiple download ranges.
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-                }
-                val tdlibPrefetch = when {
-                    prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
-                    prefetchSizeMb <= 0L -> chunkSize.toLong()
-                    else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
-                }
-                val alignedOffset = offset - (offset % (1024 * 1024))
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = fileId
-                        req.priority = DOWNLOAD_PRIORITY
-                        req.offset = alignedOffset
-                        req.limit = tdlibPrefetch
-                        req.synchronous = false
-                    })
-                }
-                activeDownloadEnd = if (tdlibPrefetch == 0L) totalSize else alignedOffset + tdlibPrefetch
+            if (totalSize <= 0L) {
+                output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
+                return
             }
 
-            val bytes = downloadChunk(fileId, offset, chunkSize)
-            if (bytes == null || bytes.isEmpty()) break
-            output.write(bytes)
-            output.flush()
-            offset += bytes.size
+            val start: Long
+            val end: Long
+
+            if (rangeStart == null && rangeEnd != null) {
+                // Suffix byte range: e.g., bytes=-500 means the last 500 bytes
+                start = maxOf(0L, totalSize - rangeEnd)
+                end = totalSize - 1L
+            } else {
+                start = rangeStart ?: 0L
+                end = rangeEnd ?: (totalSize - 1L)
+            }
+            val length = end - start + 1
+
+            val ext = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
+                ?: localPath?.substringAfterLast('.', "")?.lowercase() ?: ""
+                
+            val mimeType = getMimeType(ext)
+
+            val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
+            val headers = StringBuilder().apply {
+                append("HTTP/1.1 $status\r\n")
+                append("Accept-Ranges: bytes\r\n")
+                append("Content-Length: $length\r\n")
+                if (rangeHeader != null) {
+                    append("Content-Range: bytes $start-$end/$totalSize\r\n")
+                }
+                append("Content-Type: $mimeType\r\n")
+                append("Connection: close\r\n\r\n")
+            }.toString()
+
+            output.write(headers.toByteArray())
+
+            var activeDownloadEnd = -1L
+
+            var offset = start
+            while (offset <= end && running) {
+                val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
+
+                if (offset >= activeDownloadEnd) {
+                    // Cancel current range before starting a new one so TDLib
+                    // doesn't accumulate multiple download ranges.
+                    runCatching {
+                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                    }
+                    val tdlibPrefetch = when {
+                        prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
+                        prefetchSizeMb <= 0L -> chunkSize.toLong()
+                        else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
+                    }
+                    val alignedOffset = offset - (offset % (1024 * 1024))
+                    runCatching {
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = fileId
+                            req.priority = DOWNLOAD_PRIORITY
+                            req.offset = alignedOffset
+                            req.limit = tdlibPrefetch
+                            req.synchronous = false
+                        })
+                    }
+                    activeDownloadEnd = if (tdlibPrefetch == 0L) totalSize else alignedOffset + tdlibPrefetch
+                }
+
+                val bytes = downloadChunk(fileId, offset, chunkSize)
+                if (bytes == null || bytes.isEmpty()) break
+                output.write(bytes)
+                output.flush()
+                offset += bytes.size
+            }
+        } finally {
+            if (currentJob != null) {
+                activeFileJobs.remove(fileId, currentJob)
+            }
         }
     }
 
