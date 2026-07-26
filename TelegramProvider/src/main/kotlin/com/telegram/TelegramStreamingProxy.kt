@@ -209,13 +209,16 @@ object TelegramStreamingProxy {
                     if (count <= 0) {
                         synchronized(activeStreams) { activeStreams.remove(fileId) }
                         
-                        // Immediately stop background downloading to save data
+                        // Grace period before stopping download to allow ExoPlayer seek/probe connections to finish
                         scope.launch {
-                            runCatching {
-                                TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
-                                    req.fileId = fileId
-                                    req.onlyIfPending = false
-                                })
+                            delay(3000)
+                            if ((activeStreams[fileId] ?: 0) <= 0) {
+                                runCatching {
+                                    TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
+                                        req.fileId = fileId
+                                        req.onlyIfPending = false
+                                    })
+                                }
                             }
                         }
                         
@@ -825,6 +828,25 @@ object TelegramStreamingProxy {
                         ) as? TdApi.Data
                     } catch (e: Exception) { null }
                     return@withTimeoutOrNull finalData?.data
+                }
+                
+                // If download is no longer active (e.g. cancelled by previous seek probe), re-trigger DownloadFile
+                if ((attempts % 10 == 0 || attempts == 0) && file != null && !file.local.isDownloadingActive && !file.local.isDownloadingCompleted) {
+                    val tdlibPrefetch = when {
+                        prefetchSizeMb == -1L -> 0L
+                        prefetchSizeMb <= 0L -> limit.toLong()
+                        else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
+                    }
+                    val alignedOffset = offset - (offset % (1024 * 1024))
+                    runCatching {
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = fileId
+                            req.priority = DOWNLOAD_PRIORITY
+                            req.offset = alignedOffset
+                            req.limit = tdlibPrefetch
+                            req.synchronous = false
+                        })
+                    }
                 }
                 
                 delay(POLL_INTERVAL_MS)
