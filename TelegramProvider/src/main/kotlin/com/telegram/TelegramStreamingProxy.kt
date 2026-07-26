@@ -17,7 +17,7 @@ object TelegramStreamingProxy {
     private const val TAG = "TelegramProxy"
     private const val CHUNK_SIZE = 1024 * 1024       // 1 MB served per ExoPlayer request (TDLib max limit)
     var prefetchSizeMb = 20L                             // Prefetch window sent to TDLib (dynamically configured)
-    private const val DOWNLOAD_TIMEOUT_MS = 30_000L
+    private const val DOWNLOAD_TIMEOUT_MS = 3_000L
     private const val DOWNLOAD_PRIORITY = 32              // max TDLib priority
     private const val POLL_INTERVAL_MS = 100L
 
@@ -766,7 +766,7 @@ object TelegramStreamingProxy {
     ): ByteArray? {
         val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             var attempts = 0
-            while (attempts < 300 && running) {
+            while (attempts < 30 && running) {
                 val data = try {
                     TelegramClient.sendRequest(
                         TdApi.ReadFilePart(fileId, offset, limit.toLong())
@@ -790,8 +790,8 @@ object TelegramStreamingProxy {
                 }
 
                 // If download is no longer active (e.g. cancelled by previous MKV header/cues probe connection closing),
-                // re-trigger DownloadFile once and allow 3 seconds for TDLib to fetch without resetting
-                if ((attempts == 0 || attempts % 30 == 0) && file != null && !file.local.isDownloadingActive && !file.local.isDownloadingCompleted) {
+                // re-trigger DownloadFile for the requested offset
+                if ((attempts == 0 || attempts % 10 == 0) && file != null && !file.local.isDownloadingActive && !file.local.isDownloadingCompleted) {
                     val tdlibPrefetch = when {
                         prefetchSizeMb == -1L -> 0L
                         prefetchSizeMb <= 0L -> limit.toLong()
