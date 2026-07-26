@@ -34,7 +34,7 @@ jobs:
             "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/plugins.json?v=2"
+              "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/plugins.json?v=3"
             ]
           }' > builds/repo.json
 
