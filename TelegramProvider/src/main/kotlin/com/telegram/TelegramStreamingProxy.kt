@@ -17,7 +17,7 @@ object TelegramStreamingProxy {
     private const val TAG = "TelegramProxy"
     private const val CHUNK_SIZE = 1024 * 1024       // 1 MB served per ExoPlayer request (TDLib max limit)
     var prefetchSizeMb = 20L                             // Prefetch window sent to TDLib (dynamically configured)
-    private const val DOWNLOAD_TIMEOUT_MS = 3_000L
+    private const val DOWNLOAD_TIMEOUT_MS = 30_000L
     private const val DOWNLOAD_PRIORITY = 32              // max TDLib priority
     private const val POLL_INTERVAL_MS = 100L
 
@@ -53,11 +53,7 @@ object TelegramStreamingProxy {
 
     fun stop() {
         running = false
-        lastStreamedFileId?.let {
-            if (!isCacheEnabled()) {
-                scope.launch { deleteFile(it) }
-            }
-        }
+        lastStreamedFileId?.let { scope.launch { deleteFile(it) } }
         lastStreamedFileId = null
         try {
             serverSocket?.close()
@@ -75,7 +71,6 @@ object TelegramStreamingProxy {
             val parts = reqLine.split(" ")
             if (parts.size < 2) return
             val path = parts[1] // /file/{fileId} or /thumbnail/{fileId}
-
             var fileId: Int? = null
             var isThumbnail = false
             var urlSize = 0L
@@ -174,10 +169,11 @@ object TelegramStreamingProxy {
                     if (count <= 0) {
                         synchronized(activeStreams) { activeStreams.remove(fileId) }
                         
-                        // 5-second grace period before cancelling download.
-                        // Allows ExoPlayer to switch connections during MKV header/cues probing without killing TDLib.
+                        // 2-second grace period before cancelling download.
+                        // Allows ExoPlayer to seamlessly transition from MKV header/Cues probe connections
+                        // to the target resume connection without killing TDLib download!
                         scope.launch {
-                            delay(5000)
+                            delay(2000)
                             if ((activeStreams[fileId] ?: 0) <= 0) {
                                 runCatching {
                                     TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
@@ -216,6 +212,11 @@ object TelegramStreamingProxy {
             }
         }
         lastStreamedFileId = fileId
+
+        // Force cancel any active download for this file to ensure TDLib instantly respects our new offset priority
+        runCatching {
+            TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+        }
 
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
 
@@ -271,6 +272,13 @@ object TelegramStreamingProxy {
             val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
 
             if (offset >= activeDownloadEnd) {
+                // Cancel previous download range before starting a new one.
+                // Without this, TDLib accumulates successive DownloadFile ranges
+                // and downloads far beyond the configured buffer size.
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                }
+
                 val tdlibPrefetch = when {
                     prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
                     prefetchSizeMb <= 0L -> chunkSize.toLong()
@@ -291,19 +299,8 @@ object TelegramStreamingProxy {
 
             val bytes = downloadChunk(fileId, offset, chunkSize)
             if (bytes == null || bytes.isEmpty()) break
-            try {
-                output.write(bytes)
-                output.flush()
-            } catch (e: IOException) {
-                // Player exited or disconnected! Immediately stop TDLib download
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
-                        req.fileId = fileId
-                        req.onlyIfPending = false
-                    })
-                }
-                break
-            }
+            output.write(bytes)
+            output.flush()
             offset += bytes.size
         }
     }
@@ -757,7 +754,7 @@ object TelegramStreamingProxy {
     ): ByteArray? {
         val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             var attempts = 0
-            while (attempts < 30 && running) {
+            while (attempts < 300 && running) {
                 val data = try {
                     TelegramClient.sendRequest(
                         TdApi.ReadFilePart(fileId, offset, limit.toLong())
@@ -778,26 +775,6 @@ object TelegramStreamingProxy {
                         ) as? TdApi.Data
                     } catch (e: Exception) { null }
                     return@withTimeoutOrNull finalData?.data
-                }
-
-                // If download is no longer active (e.g. cancelled by previous MKV header/cues probe connection closing),
-                // re-trigger DownloadFile for the requested offset
-                if ((attempts == 0 || attempts % 10 == 0) && file != null && !file.local.isDownloadingActive && !file.local.isDownloadingCompleted) {
-                    val tdlibPrefetch = when {
-                        prefetchSizeMb == -1L -> 0L
-                        prefetchSizeMb <= 0L -> limit.toLong()
-                        else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
-                    }
-                    val alignedOffset = offset - (offset % (1024 * 1024))
-                    runCatching {
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = fileId
-                            req.priority = DOWNLOAD_PRIORITY
-                            req.offset = alignedOffset
-                            req.limit = tdlibPrefetch
-                            req.synchronous = false
-                        })
-                    }
                 }
                 
                 delay(POLL_INTERVAL_MS)
