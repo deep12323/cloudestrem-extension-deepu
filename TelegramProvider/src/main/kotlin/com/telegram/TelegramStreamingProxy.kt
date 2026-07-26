@@ -168,22 +168,10 @@ object TelegramStreamingProxy {
                     }
                     if (count <= 0) {
                         synchronized(activeStreams) { activeStreams.remove(fileId) }
-                        
-                        // 2-second grace period before cancelling download.
-                        // Allows ExoPlayer to seamlessly transition from MKV header/Cues probe connections
-                        // to the target resume connection without killing TDLib download!
-                        scope.launch {
-                            delay(2000)
-                            if ((activeStreams[fileId] ?: 0) <= 0) {
-                                runCatching {
-                                    TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
-                                        req.fileId = fileId
-                                        req.onlyIfPending = false
-                                    })
-                                }
-                            }
-                        }
-                        
+                        // No CancelDownloadFile here! Let the download continue.
+                        // The next streamFile() call will cancel it before starting
+                        // a new offset. This prevents the race condition where
+                        // cleanup cancel kills a newly-opened connection's download.
                         scope.launch {
                             delay(30_000)
                             if (!isCacheEnabled() && (activeStreams[fileId] ?: 0) <= 0) {
@@ -212,6 +200,13 @@ object TelegramStreamingProxy {
             }
         }
         lastStreamedFileId = fileId
+
+        // Cancel any active download for this file so TDLib respects our new offset.
+        // This is the ONLY place we cancel — never in cleanup/finally blocks
+        // (to avoid race conditions with the next connection's DownloadFile).
+        runCatching {
+            TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+        }
 
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
 
@@ -267,6 +262,11 @@ object TelegramStreamingProxy {
             val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
 
             if (offset >= activeDownloadEnd) {
+                // Cancel current range before starting a new one so TDLib
+                // doesn't accumulate multiple download ranges.
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                }
                 val tdlibPrefetch = when {
                     prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
                     prefetchSizeMb <= 0L -> chunkSize.toLong()
