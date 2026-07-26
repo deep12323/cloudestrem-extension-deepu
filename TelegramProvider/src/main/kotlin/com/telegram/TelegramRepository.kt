@@ -725,7 +725,15 @@ object TelegramRepository {
 
                 val isArchiveOrSplit = ext in listOf("rar", "7z", "tar", "gz", "bz2")
                 val isSplitFile = ext.matches(Regex("^\\d+$")) || filename.lowercase().matches(Regex(""".*\.part\d+$"""))
-                val isZipFile = ext == "zip"
+                
+                val isNonMediaZipName = listOf("sub", "subs", "subtitle", "subtitles", "srt", "txt", "nfo", "poster", "font", "apk", "pdf", "doc").any {
+                    filenameLower.startsWith(it) || filenameLower.contains("$it.zip") || filenameLower.contains("${it}_") || filenameLower.contains("-$it")
+                }
+                val isZipFile = ext == "zip" && !isNonMediaZipName && (
+                    content.document.document.size >= 10_000_000L || // ZIP >= 10MB
+                    hasVideoKeywords || 
+                    listOf("movie", "series", "season", "complete", "pack", "mkv", "mp4", "hd", "720", "1080", "4k").any { filenameLower.contains(it) }
+                )
                 
                 val isVideo = !isArchiveOrSplit && !isSplitFile && !isZipFile && (hasVideoExt || hasVideoMime || hasVideoKeywords)
                 val isAudio = !isArchiveOrSplit && !isSplitFile && !isZipFile && (hasAudioExt || hasAudioMime)
