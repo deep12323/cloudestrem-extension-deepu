@@ -11,10 +11,17 @@ buildscript {
         maven("https://jitpack.io")
     }
 
+    configurations.all {
+        resolutionStrategy.dependencySubstitution {
+            substitute(module("com.github.vidstige:jadb:master-SNAPSHOT"))
+                .using(module("com.github.vidstige:jadb:v1.2.1"))
+        }
+    }
+
     dependencies {
         classpath("com.android.tools.build:gradle:8.7.3")
         // Cloudstream gradle plugin which makes everything work and builds plugins
-        classpath("com.github.recloudstream:gradle:-SNAPSHOT")
+        classpath("com.github.recloudstream:gradle:master-SNAPSHOT")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.20")
     }
 }
