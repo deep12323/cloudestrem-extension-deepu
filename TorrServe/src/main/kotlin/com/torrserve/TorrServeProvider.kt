@@ -136,9 +136,8 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
                     source = this.name,
                     name = "$name: $fileName",
                     url = playUrl
-                ).apply {
+                ) {
                     this.referer = ""
-                    this.quality = quality
                 }
             )
         }
