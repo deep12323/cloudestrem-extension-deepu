@@ -50,5 +50,18 @@
     "authors": ["deepu2135"],
     "status": 1,
     "description": "Always-on dynamic range compressor & dialogue boost for crystal-clear movie and series audio"
+  },
+  {
+    "name": "External Players (MPV Infinity & 1DM)",
+    "internalName": "ExternalPlayers",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/ExternalPlayers.cs3?v=1",
+    "tvTypes": ["Others"],
+    "language": "en",
+    "iconUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/av/play_circle_filled/materialicons/48dp/2x/baseline_play_circle_filled_white_48dp.png",
+    "apiVersion": 10,
+    "version": 1,
+    "authors": ["deepu2135"],
+    "status": 1,
+    "description": "External player integrations: MPV Infinity (Mpv∞) and 1DM Video Downloader & Player in Preferred video player"
   }
 ]
