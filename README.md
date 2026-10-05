@@ -40,6 +40,21 @@ A native BitTorrent streaming engine and buffer management utility integrated di
 
 ---
 
+## 🎙️ Dialogue Boost Configuration Guide
+
+A dedicated audio enhancement extension that brings **always-on dynamic range compression** to Cloudstream:
+
+1. **Install Dialogue Boost**: Install the `Dialogue Boost` plugin from this repository in Cloudstream.
+2. **Access Settings**: Tap the gear icon next to `Dialogue Boost` under **Settings > Extensions**.
+3. **Features & Presets**:
+   - **Always Enable Compressor**: Forces dynamic range compression to activate automatically for every video from the first frame.
+   - **🎬 Dialogue Boost (Recommended)**: -24 dB threshold, +12 dB makeup gain, 8:1 ratio — dramatically amplifies quiet whispers and dialogues while transparently leveling loud scenes.
+   - **🌙 Night Mode / Action Limiter**: -30 dB threshold, +16 dB makeup gain, 12:1 ratio — heavy compression preventing volume spikes during late-night viewing.
+   - **🔈 Light**: -18 dB threshold, +4 dB makeup gain, 4:1 ratio — subtle leveling tailored for headphones.
+   - **🎛️ Custom Tuning**: Fine-tune threshold and makeup gain sliders to your personal preference.
+
+---
+
 ## ⚡ TorrServe Configuration Guide
 
 1. **Install TorrServe**: Install the `TorrServe` plugin from this repository in Cloudstream.
