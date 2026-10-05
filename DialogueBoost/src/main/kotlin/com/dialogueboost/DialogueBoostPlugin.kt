@@ -302,14 +302,67 @@ class DialogueBoostPlugin : Plugin() {
         contentLayout.addView(presetDescView)
         contentLayout.addView(customSlidersContainer)
 
-        // --- 4. ACTION BUTTONS ---
-        val actionsLayout = LinearLayout(ctx).apply {
+        // --- 4. QUICK ACTIONS: RESET & TURN OFF ---
+        val quickActionsLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-            setPadding(0, dp(ctx, 20), 0, 0)
+            setPadding(0, dp(ctx, 16), 0, 0)
         }
 
         var alertDialog: AlertDialog? = null
+
+        val resetBtn = Button(ctx).apply {
+            text = "↺ Reset Defaults"
+            textSize = 12f
+            isAllCaps = false
+            setTextColor(Color.parseColor("#38BDF8"))
+            background = roundedDrawable(ctx, Color.parseColor("#1E293B"), 8, Color.parseColor("#0284C7"), 1)
+            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
+            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(ctx, 8)
+            }
+            layoutParams = lp
+            setOnClickListener {
+                isAlwaysOn = true
+                masterSwitch.isChecked = true
+                currentThreshold = -24f
+                currentMakeup = 12f
+                currentRatio = 8f
+                threshSeekBar.progress = 6
+                makeupSeekBar.progress = 12
+                updatePresetSelection(DialogueBoostManager.PRESET_DIALOGUE)
+                DialogueBoostManager.resetToDefaults(ctx)
+                Toast.makeText(ctx, "↺ Reset to default Dialogue Boost (-24 dB / +12 dB)", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        val turnOffBtn = Button(ctx).apply {
+            text = "🛑 Turn Off"
+            textSize = 12f
+            isAllCaps = false
+            setTextColor(Color.parseColor("#F87171"))
+            background = roundedDrawable(ctx, Color.parseColor("#1E293B"), 8, Color.parseColor("#DC2626"), 1)
+            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
+            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = lp
+            setOnClickListener {
+                isAlwaysOn = false
+                masterSwitch.isChecked = false
+                DialogueBoostManager.turnOff(ctx)
+                Toast.makeText(ctx, "🛑 Dialogue Boost turned OFF", Toast.LENGTH_SHORT).show()
+                alertDialog?.dismiss()
+            }
+        }
+
+        quickActionsLayout.addView(resetBtn)
+        quickActionsLayout.addView(turnOffBtn)
+        contentLayout.addView(quickActionsLayout)
+
+        // --- 5. ACTION BUTTONS ---
+        val actionsLayout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(0, dp(ctx, 14), 0, 0)
+        }
 
         val cancelBtn = Button(ctx).apply {
             text = "Cancel"

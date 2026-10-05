@@ -131,6 +131,28 @@ object DialogueBoostManager {
     }
 
     /**
+     * Resets DialogueBoost to recommended defaults (-24 dB threshold, +12 dB makeup gain, enabled).
+     */
+    fun resetToDefaults(context: Context) {
+        setAlwaysEnabled(context, true)
+        setPreset(context, PRESET_DIALOGUE)
+        setCustomThreshold(context, -24f)
+        setCustomMakeup(context, 12f)
+        setCustomRatio(context, 8f)
+        enforceDiskSettings(context)
+        enforceActivePlayer()
+    }
+
+    /**
+     * Completely disables DialogueBoost in settings, disk, and live player.
+     */
+    fun turnOff(context: Context) {
+        setAlwaysEnabled(context, false)
+        enforceDiskSettings(context)
+        enforceActivePlayer()
+    }
+
+    /**
      * Initializes hooks and background enforcement.
      */
     fun init(context: Context) {
@@ -351,8 +373,8 @@ object DialogueBoostManager {
                 for (f in fragments) {
                     if (f == null) continue
                     if (isPlayerFragment(f)) {
-                        // 1. Force playBackCompressorEnabled = true on player fragment
-                        setMember(f, "playBackCompressorEnabled", true)
+                        // 1. Force playBackCompressorEnabled on player fragment
+                        setMember(f, "playBackCompressorEnabled", isAlwaysEnabled(activity))
 
                         // 2. Invoke restoreCompressorSettings()
                         runCatching {
