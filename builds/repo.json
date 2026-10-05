@@ -4,6 +4,6 @@
   "description": "Telegram Extension",
   "manifestVersion": 1,
   "pluginLists": [
-    "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=11"
+    "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=12"
   ]
 }

@@ -570,6 +570,54 @@ object DialogueBoostManager {
         return false
     }
 
+    fun stopAutoEnforceDaemon() {
+        isDaemonRunning = false
+    }
+
+    fun getSavedContext(): Context? = appContext
+
+    /**
+     * Completely resets all settings when the extension is unloaded or deleted.
+     */
+    fun cleanupOnUninstall(context: Context) {
+        stopAutoEnforceDaemon()
+
+        // 1. Clear plugin's private preferences
+        runCatching {
+            getPrefs(context).edit().clear().commit()
+        }
+
+        // 2. Remove or reset CloudStream app-level compressor setting
+        runCatching {
+            getDefaultSharedPreferences(context).edit()
+                .putBoolean(CS_COMPRESSOR_ENABLED_KEY, false)
+                .putBoolean(CS_PLAYER_COMPRESSOR_ENABLED, false)
+                .remove(CS_COMPRESSOR_ENABLED_KEY)
+                .commit()
+        }
+
+        // 3. Remove or reset CloudStream DataStore keys
+        runCatching {
+            context.setKey(CS_PLAYER_COMPRESSOR_ENABLED, false)
+        }
+        runCatching {
+            CloudStreamApp.setKey(CS_PLAYER_COMPRESSOR_ENABLED, false)
+        }
+        runCatching {
+            val rebuildPrefs = context.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
+            rebuildPrefs.edit()
+                .putString(CS_PLAYER_COMPRESSOR_ENABLED, "false")
+                .putBoolean(CS_PLAYER_COMPRESSOR_ENABLED, false)
+                .remove(CS_PLAYER_COMPRESSOR_ENABLED)
+                .commit()
+        }
+
+        // 4. Disable compressor on live player if one is active
+        runCatching {
+            enforceActivePlayer()
+        }
+    }
+
     /**
      * Starts a continuous, ultra-light background daemon that monitors video playback
      * and guarantees that newly instantiated compressors are immediately turned ON.
@@ -580,7 +628,7 @@ object DialogueBoostManager {
 
         CoroutineScope(Dispatchers.Main.immediate).launch {
             var diskSyncCounter = 0
-            while (true) {
+            while (isDaemonRunning) {
                 try {
                     // Fast in-memory check and activation on Main thread
                     enforceActivePlayer()
