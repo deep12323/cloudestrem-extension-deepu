@@ -43,6 +43,11 @@ android {
         buildConfig = true
         viewBinding = true
     }
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/java", "src/main/kotlin")
+        }
+    }
 }
 
 afterEvaluate {
