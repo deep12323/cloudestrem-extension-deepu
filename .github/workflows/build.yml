@@ -36,7 +36,7 @@ jobs:
             "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=5"
+              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=6"
             ]
           }' > builds/repo.json
 
@@ -70,12 +70,12 @@ jobs:
             {
               "name": "TorrServe",
               "internalName": "TorrServe",
-              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=2",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=3",
               "tvTypes": ["Torrent", "Movie", "TvSeries"],
               "language": "en",
               "iconUrl": "https://raw.githubusercontent.com/YouROK/TorrServer/master/server/web/public/favicon.ico",
               "apiVersion": 10,
-              "version": 2,
+              "version": 3,
               "authors": ["deepu2135"],
               "status": 1,
               "description": "TorrServer BitTorrent streaming engine, buffer tuner & seeding controls"
