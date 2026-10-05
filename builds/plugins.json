@@ -28,12 +28,12 @@
   {
     "name": "TorrServe",
     "internalName": "TorrServe",
-    "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=1",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=3",
     "tvTypes": ["Torrent", "Movie", "TvSeries"],
     "language": "en",
     "iconUrl": "https://raw.githubusercontent.com/YouROK/TorrServer/master/server/web/public/favicon.ico",
     "apiVersion": 10,
-    "version": 1,
+    "version": 3,
     "authors": ["deepu2135"],
     "status": 1,
     "description": "TorrServer BitTorrent streaming engine, buffer tuner & seeding controls"
