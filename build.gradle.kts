@@ -8,25 +8,21 @@ buildscript {
         google()
         mavenCentral()
         // Shitpack repo which contains our tools and dependencies
-        maven("https://jitpack.io")
-    }
-
-    configurations.all {
-        resolutionStrategy.dependencySubstitution {
-            substitute(module("com.github.vidstige:jadb:master-SNAPSHOT"))
-                .using(module("com.github.vidstige:jadb:v1.2.1"))
-            substitute(module("com.github.recloudstream:gradle:master-SNAPSHOT"))
-                .using(module("com.github.recloudstream.gradle:gradle:master-32895aedb6-1"))
-            substitute(module("com.github.recloudstream:gradle:-SNAPSHOT"))
-                .using(module("com.github.recloudstream.gradle:gradle:master-32895aedb6-1"))
+        maven("https://jitpack.io") {
+            metadataSources {
+                artifact()
+            }
         }
     }
 
     dependencies {
         classpath("com.android.tools.build:gradle:8.7.3")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+        classpath("com.github.vidstige:jadb:v1.2.1")
+        classpath("org.ow2.asm:asm:9.9.1")
+        classpath("org.ow2.asm:asm-tree:9.9.1")
         // Cloudstream gradle plugin which makes everything work and builds plugins
         classpath("com.github.recloudstream.gradle:gradle:master-32895aedb6-1")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.20")
     }
 }
 
@@ -94,6 +90,8 @@ subprojects {
         // IMPORTANT: Do not bump Jackson above 2.13.1, as newer versions will
         // break compatibility on older Android devices.
         implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1") // JSON Parser
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
     }
 }
 
