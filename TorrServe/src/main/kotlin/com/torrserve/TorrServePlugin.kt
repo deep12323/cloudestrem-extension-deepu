@@ -25,6 +25,9 @@ class TorrServePlugin : Plugin() {
         val provider = TorrServeProvider(context)
         registerMainAPI(provider)
 
+        // Automatically pre-warm and monitor TorrServer to auto-apply user settings on cold launch!
+        TorrServeManager.startAutoConfigDaemon(context)
+
         openSettings = { ctx ->
             showModernSettingsDialog(ctx)
         }
