@@ -5,7 +5,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 }
 
-version = 1
+version = 2
 
 cloudstream {
     description = "Always-on dynamic range compressor & dialogue boost for crystal-clear movie and series audio"

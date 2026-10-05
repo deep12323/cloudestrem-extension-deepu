@@ -17,13 +17,8 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class DialogueBoostPlugin : Plugin() {
 
     override fun load(context: Context) {
-        // Enforce settings immediately when Cloudstream boots
-        if (DialogueBoostManager.isAlwaysEnabled(context)) {
-            DialogueBoostManager.enforceCompressorSettings(context)
-        }
-
-        // Start background auto-enforce daemon
-        DialogueBoostManager.startAutoEnforceDaemon(context)
+        // Initialize lifecycle hooks and background memory daemon
+        DialogueBoostManager.init(context)
 
         // Register settings gear icon
         openSettings = { ctx ->
@@ -340,7 +335,8 @@ class DialogueBoostPlugin : Plugin() {
                     DialogueBoostManager.setCustomRatio(ctx, currentRatio)
                 }
 
-                val success = DialogueBoostManager.enforceCompressorSettings(ctx)
+                val success = DialogueBoostManager.enforceDiskSettings(ctx)
+                DialogueBoostManager.enforceActivePlayer()
                 if (success) {
                     val summary = if (isAlwaysOn) {
                         "✓ Active: ${currentThreshold.toInt()} dB threshold, +${currentMakeup.toInt()} dB makeup gain"
