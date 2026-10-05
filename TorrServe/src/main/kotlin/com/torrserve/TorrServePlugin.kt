@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 class TorrServePlugin : Plugin() {
 
     override fun load(context: Context) {
+        TorrServeManager.initContext(context)
         val provider = TorrServeProvider(context)
         registerMainAPI(provider)
 
@@ -59,6 +60,7 @@ class TorrServePlugin : Plugin() {
         var currentCacheMb = TorrServeManager.getCacheSizeMb(ctx)
         var currentPreload = TorrServeManager.getPreloadPercent(ctx)
         var currentReadAhead = TorrServeManager.getReadAheadPercent(ctx)
+        var currentTimeout = TorrServeManager.getDisconnectTimeout(ctx)
         var currentUseDisk = TorrServeManager.getUseDisk(ctx)
         var currentDisableUpload = TorrServeManager.getDisableUpload(ctx)
 
@@ -146,10 +148,9 @@ class TorrServePlugin : Plugin() {
         profileScroll.addView(profileRow)
         mainLayout.addView(profileScroll)
 
-        // Forward declarations for updating UI
         var updateUiCallback: (() -> Unit)? = null
 
-        fun addProfileBtn(label: String, cache: Long, preload: Int, readAhead: Int, disk: Boolean, noSeed: Boolean) {
+        fun addProfileBtn(label: String, cache: Long, preload: Int, readAhead: Int, timeoutSec: Int, disk: Boolean, noSeed: Boolean) {
             val btn = TextView(ctx).apply {
                 text = label
                 textSize = 12f
@@ -166,6 +167,7 @@ class TorrServePlugin : Plugin() {
                     currentCacheMb = cache
                     currentPreload = preload
                     currentReadAhead = readAhead
+                    currentTimeout = timeoutSec
                     currentUseDisk = disk
                     currentDisableUpload = noSeed
                     updateUiCallback?.invoke()
@@ -175,12 +177,12 @@ class TorrServePlugin : Plugin() {
             profileRow.addView(btn)
         }
 
-        addProfileBtn("⚡ Instant Start (0%)", 128L, 0, 95, false, true)
-        addProfileBtn("📺 FireStick / TV", 48L, 15, 85, true, true)
-        addProfileBtn("🎬 4K Cinema", 384L, 15, 95, false, true)
-        addProfileBtn("🔄 Stock Default", 64L, 50, 95, false, false)
+        addProfileBtn("⚡ Fast Stream", 128L, 10, 95, 60, false, false)
+        addProfileBtn("📺 FireStick / TV", 48L, 15, 85, 90, true, false)
+        addProfileBtn("🎬 4K Cinema", 384L, 15, 95, 180, false, false)
+        addProfileBtn("🛡️ Resilient (Slow Seeds)", 200L, 20, 95, 300, false, false)
+        addProfileBtn("🔄 Stock Default", 64L, 50, 95, 30, false, false)
 
-        // --- Helper for creating styled Card containers ---
         fun createCard(): LinearLayout {
             return LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
@@ -210,7 +212,7 @@ class TorrServePlugin : Plugin() {
             setPadding(0, dp(ctx, 2), 0, dp(ctx, 2))
         }
         val cacheDescLabel = TextView(ctx).apply {
-            text = "Total memory/disk allocated for torrent pieces"
+            text = "Memory/disk allocated for torrent pieces (Minimum 32MB recommended)"
             textSize = 11f
             setTextColor(Color.parseColor("#64748B"))
             setPadding(0, 0, 0, dp(ctx, 8))
@@ -224,7 +226,7 @@ class TorrServePlugin : Plugin() {
         }
         cacheChipsScroll.addView(cacheChipsRow)
 
-        val presetSizes = listOf(32L, 48L, 64L, 128L, 200L, 256L, 512L, 1024L)
+        val presetSizes = listOf(32L, 48L, 64L, 128L, 200L, 256L, 384L, 512L, 1024L)
         val chipViews = mutableListOf<TextView>()
 
         fun refreshBufferChips() {
@@ -261,7 +263,6 @@ class TorrServePlugin : Plugin() {
             cacheChipsRow.addView(chip)
         }
 
-        // Custom size chip
         val customChip = TextView(ctx).apply {
             text = "✏️ Custom..."
             textSize = 12f
@@ -274,7 +275,7 @@ class TorrServePlugin : Plugin() {
                 val input = EditText(ctx).apply {
                     inputType = InputType.TYPE_CLASS_NUMBER
                     setText(currentCacheMb.toString())
-                    setHint("Size in MB")
+                    setHint("Size in MB (min 16)")
                     setSelection(text.length)
                 }
                 val container = FrameLayout(ctx).apply {
@@ -283,12 +284,15 @@ class TorrServePlugin : Plugin() {
                 }
                 AlertDialog.Builder(ctx)
                     .setTitle("Custom Buffer Size (MB)")
+                    .setMessage("Values below 32MB can cause stream stuttering or Source Error 2000.")
                     .setView(container)
                     .setPositiveButton("Set") { _, _ ->
                         val parsed = input.text.toString().trim().toLongOrNull()
-                        if (parsed != null && parsed > 0) {
+                        if (parsed != null && parsed >= 16) {
                             currentCacheMb = parsed
                             refreshBufferChips()
+                        } else {
+                            Toast.makeText(ctx, "Buffer size must be at least 16 MB", Toast.LENGTH_SHORT).show()
                         }
                     }
                     .setNegativeButton("Cancel", null)
@@ -333,11 +337,11 @@ class TorrServePlugin : Plugin() {
             val clamped = percent.coerceIn(0, 70)
             preloadValueLabel.text = if (clamped == 0) "0% (Instant Start)" else "$clamped%"
             preloadDescLabel.text = when {
-                clamped == 0 -> "Instant Start: Zero pre-buffering! Playback starts immediately as data arrives"
+                clamped == 0 -> "Instant Start: Zero pre-buffering (Risk of stalling on slow torrents)"
                 clamped <= 10 -> "Ultra Fast: Starts playback in ~1-2 seconds (Requires fast seeds)"
-                clamped <= 20 -> "Recommended: Starts playback in ~3-5 seconds with good stability"
+                clamped <= 20 -> "Recommended: Starts playback in ~3-5 seconds with high stability"
                 clamped <= 35 -> "Safe: Buffers moderately before starting"
-                else -> "CloudStream Default: Fills half buffer before playing (Waits longer)"
+                else -> "CloudStream Default: Fills half buffer before playing"
             }
         }
 
@@ -351,7 +355,6 @@ class TorrServePlugin : Plugin() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
-        // Quick preload chips
         val preloadChipsScroll = HorizontalScrollView(ctx).apply {
             isHorizontalScrollBarEnabled = false
             setPadding(0, 0, 0, dp(ctx, 6))
@@ -361,9 +364,9 @@ class TorrServePlugin : Plugin() {
         }
         preloadChipsScroll.addView(preloadChipsRow)
 
-        listOf(0, 5, 10, 15, 25, 50).forEach { p ->
+        listOf(5, 10, 15, 25, 50).forEach { p ->
             val chip = TextView(ctx).apply {
-                text = if (p == 0) "⚡ 0% Instant" else "$p%"
+                text = if (p == 15) "⭐ 15%" else "$p%"
                 textSize = 11f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.parseColor("#CBD5E1"))
@@ -416,20 +419,19 @@ class TorrServePlugin : Plugin() {
         }
 
         fun updateReadAheadLabels(percent: Int) {
-            val clamped = percent.coerceIn(0, 100)
-            readAheadValueLabel.text = if (clamped == 0) "0% (No Lookahead)" else "$clamped%"
+            val clamped = percent.coerceIn(5, 100)
+            readAheadValueLabel.text = "$clamped%"
             readAheadDescLabel.text = when {
-                clamped == 0 -> "Zero Lookahead: Does not pre-buffer chunks ahead of current position"
-                clamped < 50 -> "Low Lookahead: Only buffers a minimal window ahead"
-                clamped < 80 -> "Balanced: Evenly distributes buffer ahead and behind"
+                clamped < 50 -> "Low Lookahead: Only buffers a minimal chunk window ahead"
+                clamped < 80 -> "Balanced: Buffers moderately ahead"
                 clamped < 95 -> "High Forward Window: Good buffer cushion for high bitrates"
-                else -> "Recommended: Maximizes forward chunk buffer for smooth seeking & stability"
+                else -> "Recommended: Actively pre-buffers upcoming pieces to prevent playback stalls"
             }
         }
 
         readAheadSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                val value = progress.coerceIn(0, 100)
+                val value = progress.coerceIn(5, 100)
                 currentReadAhead = value
                 updateReadAheadLabels(value)
             }
@@ -437,7 +439,6 @@ class TorrServePlugin : Plugin() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
-        // Quick read-ahead chips
         val readAheadChipsScroll = HorizontalScrollView(ctx).apply {
             isHorizontalScrollBarEnabled = false
             setPadding(0, 0, 0, dp(ctx, 6))
@@ -447,9 +448,9 @@ class TorrServePlugin : Plugin() {
         }
         readAheadChipsScroll.addView(readAheadChipsRow)
 
-        listOf(0, 25, 50, 75, 90, 95, 100).forEach { p ->
+        listOf(50, 75, 90, 95, 100).forEach { p ->
             val chip = TextView(ctx).apply {
-                text = if (p == 95) "⭐ 95%" else if (p == 0) "0%" else "$p%"
+                text = if (p == 95) "⭐ 95%" else "$p%"
                 textSize = 11f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.parseColor("#CBD5E1"))
@@ -475,7 +476,134 @@ class TorrServePlugin : Plugin() {
         readAheadCard.addView(readAheadSeekBar)
         mainLayout.addView(readAheadCard)
 
-        // --- 6. CARD: STORAGE & NETWORK TOGGLES ---
+        // --- 6. CARD: STREAM / DISCONNECT TIMEOUT ---
+        val timeoutCard = createCard()
+        val timeoutTitle = TextView(ctx).apply {
+            text = "STREAM DISCONNECT TIMEOUT"
+            textSize = 11f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#94A3B8"))
+        }
+        val timeoutValueLabel = TextView(ctx).apply {
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#FBBF24"))
+            setPadding(0, dp(ctx, 2), 0, dp(ctx, 2))
+        }
+        val timeoutDescLabel = TextView(ctx).apply {
+            textSize = 11f
+            setTextColor(Color.parseColor("#64748B"))
+            setPadding(0, 0, 0, dp(ctx, 6))
+        }
+
+        val timeoutSeekBar = SeekBar(ctx).apply {
+            max = 300
+            isFocusable = true
+            setPadding(0, dp(ctx, 8), 0, dp(ctx, 8))
+        }
+
+        fun updateTimeoutLabels(seconds: Int) {
+            val clamped = seconds.coerceAtLeast(10)
+            timeoutValueLabel.text = when {
+                clamped >= 60 && clamped % 60 == 0 -> "${clamped / 60}m (${clamped}s)"
+                else -> "${clamped}s"
+            }
+            timeoutDescLabel.text = when {
+                clamped < 30 -> "Short: Server quickly disconnects stalled streams (Risk of Source Error 2000)"
+                clamped == 30 -> "Stock Default: 30 seconds before disconnecting idle/stalled torrents"
+                clamped <= 60 -> "Recommended: 60s timeout provides stability during temporary peer slowdowns"
+                clamped <= 180 -> "Extended: 2–3 minutes cushion for slow torrents and low seed counts"
+                else -> "Maximum Resilience: 5+ minutes wait before dropping inactive streams"
+            }
+        }
+
+        timeoutSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                val value = progress.coerceAtLeast(10)
+                currentTimeout = value
+                updateTimeoutLabels(value)
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+
+        val timeoutChipsScroll = HorizontalScrollView(ctx).apply {
+            isHorizontalScrollBarEnabled = false
+            setPadding(0, 0, 0, dp(ctx, 6))
+        }
+        val timeoutChipsRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        timeoutChipsScroll.addView(timeoutChipsRow)
+
+        listOf(30, 60, 120, 180, 300).forEach { t ->
+            val chip = TextView(ctx).apply {
+                text = if (t == 60) "⭐ 60s" else if (t >= 60) "${t / 60}m" else "${t}s"
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.parseColor("#CBD5E1"))
+                background = roundedDrawable(ctx, Color.parseColor("#262F40"), radiusDp = 8)
+                setPadding(dp(ctx, 10), dp(ctx, 5), dp(ctx, 10), dp(ctx, 5))
+                isFocusable = true
+                val params = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                params.setMargins(0, 0, dp(ctx, 6), 0)
+                layoutParams = params
+                setOnClickListener {
+                    currentTimeout = t
+                    timeoutSeekBar.progress = t
+                    updateTimeoutLabels(t)
+                }
+            }
+            timeoutChipsRow.addView(chip)
+        }
+
+        val customTimeoutChip = TextView(ctx).apply {
+            text = "✏️ Custom..."
+            textSize = 11f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#FDE68A"))
+            background = roundedDrawable(ctx, Color.parseColor("#2A2415"), radiusDp = 8, strokeColor = Color.parseColor("#F59E0B"), strokeWidthDp = 1)
+            setPadding(dp(ctx, 10), dp(ctx, 5), dp(ctx, 10), dp(ctx, 5))
+            isFocusable = true
+            setOnClickListener {
+                val input = EditText(ctx).apply {
+                    inputType = InputType.TYPE_CLASS_NUMBER
+                    setText(currentTimeout.toString())
+                    setHint("Seconds (min 10)")
+                    setSelection(text.length)
+                }
+                val container = FrameLayout(ctx).apply {
+                    setPadding(dp(ctx, 20), dp(ctx, 10), dp(ctx, 20), dp(ctx, 10))
+                    addView(input)
+                }
+                AlertDialog.Builder(ctx)
+                    .setTitle("Custom Disconnect Timeout (Seconds)")
+                    .setMessage("Sets how many seconds TorrServer waits during stalls before dropping the torrent.")
+                    .setView(container)
+                    .setPositiveButton("Set") { _, _ ->
+                        val parsed = input.text.toString().trim().toIntOrNull()
+                        if (parsed != null && parsed >= 10) {
+                            currentTimeout = parsed
+                            timeoutSeekBar.progress = parsed.coerceAtMost(300)
+                            updateTimeoutLabels(parsed)
+                        } else {
+                            Toast.makeText(ctx, "Timeout must be at least 10 seconds", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+        timeoutChipsRow.addView(customTimeoutChip)
+
+        timeoutCard.addView(timeoutTitle)
+        timeoutCard.addView(timeoutValueLabel)
+        timeoutCard.addView(timeoutDescLabel)
+        timeoutCard.addView(timeoutChipsScroll)
+        timeoutCard.addView(timeoutSeekBar)
+        mainLayout.addView(timeoutCard)
+
+        // --- 7. CARD: STORAGE & NETWORK TOGGLES ---
         val togglesCard = createCard()
         val togglesTitle = TextView(ctx).apply {
             text = "STORAGE & BANDWIDTH CONTROLS"
@@ -504,7 +632,7 @@ class TorrServePlugin : Plugin() {
         }
         val seedSubLabel = TextView(ctx).apply {
             textSize = 11f
-            setTextColor(Color.parseColor("#64748B"))
+            setTextColor(Color.parseColor("#F59E0B"))
         }
         seedTextLayout.addView(seedLabel)
         seedTextLayout.addView(seedSubLabel)
@@ -516,9 +644,9 @@ class TorrServePlugin : Plugin() {
         fun updateSeedUi(disabled: Boolean) {
             seedSwitch.isChecked = disabled
             seedSubLabel.text = if (disabled) {
-                "Upload disabled: Saves mobile data, avoids seeding overhead"
+                "⚠️ Upload disabled (Leech only). Note: BitTorrent peers may choke connections and drop download speed to 0-54 B/s!"
             } else {
-                "Upload enabled: Shares downloaded chunks with other peers"
+                "Upload enabled: Shares downloaded chunks so peers unchoke and provide full download speed."
             }
         }
         seedSwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -592,12 +720,14 @@ class TorrServePlugin : Plugin() {
             updatePreloadLabels(currentPreload)
             readAheadSeekBar.progress = currentReadAhead
             updateReadAheadLabels(currentReadAhead)
+            timeoutSeekBar.progress = currentTimeout.coerceAtMost(300)
+            updateTimeoutLabels(currentTimeout)
             updateSeedUi(currentDisableUpload)
             updateDiskUi(currentUseDisk)
         }
         updateUiCallback?.invoke()
 
-        // --- 7. ACTION BUTTONS (BOTTOM) ---
+        // --- 8. ACTION BUTTONS (BOTTOM) ---
         val actionsLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
@@ -636,14 +766,17 @@ class TorrServePlugin : Plugin() {
                 TorrServeManager.setCacheSizeMb(ctx, currentCacheMb)
                 TorrServeManager.setPreloadPercent(ctx, currentPreload)
                 TorrServeManager.setReadAheadPercent(ctx, currentReadAhead)
+                TorrServeManager.setDisconnectTimeout(ctx, currentTimeout)
                 TorrServeManager.setUseDisk(ctx, currentUseDisk)
                 TorrServeManager.setDisableUpload(ctx, currentDisableUpload)
 
+                TorrServeManager.syncSettingsFileToDisk(ctx)
+
                 TorrServeManager.applySettingsAsync(ctx) { success, url ->
                     if (success) {
-                        Toast.makeText(ctx, "✓ Applied: ${currentCacheMb}MB buffer, ${currentPreload}% preload to engine ($url)", Toast.LENGTH_LONG).show()
+                        Toast.makeText(ctx, "✓ Applied: ${currentCacheMb}MB buffer, ${currentTimeout}s timeout to engine ($url)", Toast.LENGTH_LONG).show()
                     } else {
-                        Toast.makeText(ctx, "✓ Saved: Settings will activate automatically on playback", Toast.LENGTH_LONG).show()
+                        Toast.makeText(ctx, "✓ Saved: Settings permanently written to disk & engine", Toast.LENGTH_LONG).show()
                     }
                 }
                 alertDialog.dismiss()

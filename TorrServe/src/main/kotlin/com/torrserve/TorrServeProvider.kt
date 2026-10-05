@@ -49,11 +49,15 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
         }
 
         val title = parseTorrentTitle(magnetUrl)
+        val ctx = pluginContext ?: TorrServeManager.appContext
 
         try {
-            val serverUrl = TorrServeManager.getOrStartServer(pluginContext)
+            val serverUrl = TorrServeManager.getOrStartServer(ctx)
+            if (ctx != null) {
+                TorrServeManager.applyBufferSettings(serverUrl, ctx)
+            }
             val hash = TorrServeManager.addTorrent(serverUrl, magnetUrl, title)
-            val files = TorrServeManager.waitForFiles(serverUrl, hash, maxWaitSeconds = 6)
+            val files = TorrServeManager.waitForFiles(serverUrl, hash, maxWaitSeconds = 8)
             val videoFiles = files.filter { it.extension in TorrServeManager.VIDEO_EXTENSIONS }
 
             if (videoFiles.size > 1) {
@@ -65,9 +69,10 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
                     }
                 }
 
+                val bufferMb = if (ctx != null) TorrServeManager.getCacheSizeMb(ctx) else 128L
                 return newTvSeriesLoadResponse(title, magnetUrl, TvType.TvSeries, episodes) {
                     this.posterUrl = "https://raw.githubusercontent.com/YouROK/TorrServer/master/server/web/public/favicon.ico"
-                    this.plot = "Multi-file BitTorrent stream via TorrServer (${TorrServeManager.getCacheSizeMb(pluginContext ?: return@newTvSeriesLoadResponse)}MB buffer)"
+                    this.plot = "Multi-file BitTorrent stream via TorrServer (${bufferMb}MB buffer)"
                 }
             }
         } catch (e: Exception) {
@@ -86,7 +91,11 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val serverUrl = TorrServeManager.getOrStartServer(pluginContext)
+        val ctx = pluginContext ?: TorrServeManager.appContext
+        val serverUrl = TorrServeManager.getOrStartServer(ctx)
+        if (ctx != null) {
+            TorrServeManager.applyBufferSettings(serverUrl, ctx)
+        }
 
         val cleanTorrentUrl = data.substringBefore("#fileIndex=")
         val targetFileId = if (data.contains("#fileIndex=")) {
@@ -96,7 +105,9 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
         }
 
         val hash = TorrServeManager.addTorrent(serverUrl, cleanTorrentUrl)
-        val files = TorrServeManager.waitForFiles(serverUrl, hash, maxWaitSeconds = 15)
+        val timeout = if (ctx != null) TorrServeManager.getDisconnectTimeout(ctx) else 60
+        val metaWait = (timeout / 2).coerceIn(15, 60)
+        val files = TorrServeManager.waitForFiles(serverUrl, hash, maxWaitSeconds = metaWait)
 
         if (files.isEmpty()) {
             throw Exception("Timed out fetching torrent metadata. Ensure the torrent has active seeders.")
@@ -108,9 +119,9 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
             val encodedName = URLEncoder.encode(subName, "UTF-8")
             val subStreamUrl = "$serverUrl/stream/$encodedName?link=$hash&index=${sub.id}&play=true"
             subtitleCallback(
-                SubtitleFile(
-                    lang = subName.substringBeforeLast('.'),
-                    url = subStreamUrl
+                newSubtitleFile(
+                    subName.substringBeforeLast('.'),
+                    subStreamUrl
                 )
             )
         }
