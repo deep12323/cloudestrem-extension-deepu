@@ -13,6 +13,7 @@ import android.widget.*
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import kotlinx.coroutines.launch
+import org.drinkless.tdlib.TdApi
 
 class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheetDialogFragment() {
 
@@ -286,13 +287,13 @@ class TelegramSettingsFragment(private val plugin: TelegramPlugin) : BottomSheet
                         
                         // Force TDLib to sync chats so raw IDs are cached (both Main and Archive)
                         viewLifecycleOwner.lifecycleScope.launch {
-                            for (chatList in listOf(org.drinkless.tdlib.TdApi.ChatListMain(), org.drinkless.tdlib.TdApi.ChatListArchive())) {
+                            for (chatList: TdApi.ChatList in listOf(TdApi.ChatListMain(), TdApi.ChatListArchive())) {
                                 try {
                                     var loaded = false
                                     var attempt = 0
                                     while (!loaded && attempt < 5) {
                                         try {
-                                            TelegramClient.sendRequest(org.drinkless.tdlib.TdApi.LoadChats(chatList, 100))
+                                            TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
                                             attempt++
                                         } catch (e: Exception) {
                                             loaded = true
