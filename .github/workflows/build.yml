@@ -34,7 +34,7 @@ jobs:
             "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/plugins.json?v=3"
+              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=3"
             ]
           }' > builds/repo.json
 
@@ -42,10 +42,10 @@ jobs:
             {
               "name": "Telegram",
               "internalName": "TelegramProvider",
-              "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TelegramProvider.cs3?v=17",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TelegramProvider.cs3?v=17",
               "tvTypes": ["Movie", "TvSeries"],
               "language": "en",
-              "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/icon.png",
+              "iconUrl": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/master/icon.png",
               "apiVersion": 10,
               "version": 167,
               "authors": ["deepu2135"],
@@ -55,10 +55,10 @@ jobs:
             {
               "name": "Google Drive",
               "internalName": "GoogleDriveProvider",
-              "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/GoogleDriveProvider.cs3?v=17",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/GoogleDriveProvider.cs3?v=17",
               "tvTypes": ["Movie", "TvSeries"],
               "language": "en",
-              "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png",
+              "iconUrl": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/master/google_drive_icon.png",
               "apiVersion": 10,
               "version": 12,
               "authors": ["deepu2135"],
@@ -68,7 +68,7 @@ jobs:
             {
               "name": "TorrServe",
               "internalName": "TorrServe",
-              "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=1",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=1",
               "tvTypes": ["Torrent", "Movie", "TvSeries"],
               "language": "en",
               "iconUrl": "https://raw.githubusercontent.com/YouROK/TorrServer/master/server/web/public/favicon.ico",
