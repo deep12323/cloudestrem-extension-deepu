@@ -24,5 +24,18 @@
     "authors": ["deepu2135"],
     "status": 1,
     "description": "Stream video and audio from your Google Drive"
+  },
+  {
+    "name": "TorrServe",
+    "internalName": "TorrServe",
+    "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=1",
+    "tvTypes": ["Torrent", "Movie", "TvSeries"],
+    "language": "en",
+    "iconUrl": "https://raw.githubusercontent.com/YouROK/TorrServer/master/server/web/public/favicon.ico",
+    "apiVersion": 10,
+    "version": 1,
+    "authors": ["deepu2135"],
+    "status": 1,
+    "description": "TorrServer BitTorrent streaming engine, buffer tuner & seeding controls"
   }
 ]
