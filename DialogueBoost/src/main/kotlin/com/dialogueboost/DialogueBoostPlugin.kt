@@ -26,6 +26,14 @@ class DialogueBoostPlugin : Plugin() {
         }
     }
 
+    override fun beforeUnload() {
+        val ctx = DialogueBoostManager.getForegroundActivity()
+            ?: DialogueBoostManager.getSavedContext()
+        if (ctx != null) {
+            DialogueBoostManager.cleanupOnUninstall(ctx)
+        }
+    }
+
     private fun dp(ctx: Context, value: Int): Int {
         return (value * ctx.resources.displayMetrics.density).toInt()
     }
