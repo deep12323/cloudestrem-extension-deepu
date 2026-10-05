@@ -3,15 +3,21 @@ package com.dialogueboost
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import com.lagradost.cloudstream3.CommonActivity
+import com.lagradost.cloudstream3.CloudStreamApp
+import com.lagradost.cloudstream3.utils.DataStore
+import com.lagradost.cloudstream3.utils.DataStore.setKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.lang.ref.WeakReference
 
 object DialogueBoostManager {
@@ -28,7 +34,7 @@ object DialogueBoostManager {
     const val KEY_CUSTOM_ATTACK = "dialogue_boost_attack"
     const val KEY_CUSTOM_RELEASE = "dialogue_boost_release"
 
-    // Cloudstream internal keys (from PR #3117 DynamicRangeCompressor)
+    // Cloudstream internal keys (from DynamicRangeCompressor & FullScreenPlayer)
     const val CS_COMPRESSOR_ENABLED_KEY = "compressor_enabled_key"
     const val CS_PLAYER_COMPRESSOR_ENABLED = "player_compressor_enabled"
     const val CS_PLAYER_COMPRESSOR_THRESHOLD = "player_compressor_threshold"
@@ -46,6 +52,7 @@ object DialogueBoostManager {
     private var isDaemonRunning = false
     private var isLifecycleRegistered = false
     private var currentActivityRef: WeakReference<Activity>? = null
+    private var appContext: Context? = null
 
     fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -128,18 +135,34 @@ object DialogueBoostManager {
      */
     fun init(context: Context) {
         val app = (context.applicationContext as? Application) ?: (context as? Application)
+        appContext = app ?: context.applicationContext ?: context
+
+        // Unpack activity if context is an Activity
+        findActivityFromContext(context)?.let {
+            currentActivityRef = WeakReference(it)
+        }
+
         if (app != null && !isLifecycleRegistered) {
             isLifecycleRegistered = true
             registerLifecycle(app)
         }
 
-        // Run initial disk enforcement
+        // Run initial disk enforcement immediately
         if (isAlwaysEnabled(context)) {
             enforceDiskSettings(context)
         }
 
         // Start active memory monitoring daemon
         startAutoEnforceDaemon(context)
+    }
+
+    private fun findActivityFromContext(context: Context?): Activity? {
+        var ctx = context
+        while (ctx is ContextWrapper) {
+            if (ctx is Activity) return ctx
+            ctx = ctx.baseContext
+        }
+        return null
     }
 
     private fun registerLifecycle(app: Application) {
@@ -156,6 +179,7 @@ object DialogueBoostManager {
             override fun onActivityResumed(activity: Activity) {
                 currentActivityRef = WeakReference(activity)
                 enforceActivePlayer(activity)
+                appContext?.let { enforceDiskSettings(it) }
             }
 
             override fun onActivityPaused(activity: Activity) {}
@@ -170,39 +194,55 @@ object DialogueBoostManager {
     }
 
     /**
-     * Finds foreground Activity via registered ref or reflection fallback on ActivityThread.
+     * Finds foreground Activity via CommonActivity, registered ref, or context traversal.
      */
     fun getForegroundActivity(): Activity? {
+        // 1. Primary: CloudStream's own CommonActivity.activity
+        runCatching {
+            val act = CommonActivity.activity
+            if (act != null && !act.isFinishing && !act.isDestroyed) {
+                currentActivityRef = WeakReference(act)
+                return act
+            }
+        }
+
+        // 2. Reflection on CommonActivity (in case of classloader isolation)
+        runCatching {
+            val clazz = Class.forName("com.lagradost.cloudstream3.CommonActivity")
+            val act = runCatching {
+                val field = clazz.getDeclaredField("INSTANCE").apply { isAccessible = true }
+                val instance = field.get(null)
+                clazz.getMethod("getActivity").invoke(instance) as? Activity
+            }.getOrNull() ?: runCatching {
+                clazz.getMethod("getActivity").invoke(null) as? Activity
+            }.getOrNull()
+            if (act != null && !act.isFinishing && !act.isDestroyed) {
+                currentActivityRef = WeakReference(act)
+                return act
+            }
+        }
+
+        // 3. Fallback: Lifecycle callback cached ref
         val refAct = currentActivityRef?.get()
-        if (refAct != null && !refAct.isFinishing) {
+        if (refAct != null && !refAct.isFinishing && !refAct.isDestroyed) {
             return refAct
         }
 
-        return runCatching {
-            val activityThreadClass = Class.forName("android.app.ActivityThread")
-            val currentActivityThread = activityThreadClass.getMethod("currentActivityThread").invoke(null)
-            val activitiesField = activityThreadClass.getDeclaredField("mActivities").apply { isAccessible = true }
-            val activities = activitiesField.get(currentActivityThread) as? Map<*, *> ?: return null
-            for (activityRecord in activities.values) {
-                if (activityRecord == null) continue
-                val recordClass = activityRecord.javaClass
-                val pausedField = recordClass.getDeclaredField("paused").apply { isAccessible = true }
-                if (!pausedField.getBoolean(activityRecord)) {
-                    val activityField = recordClass.getDeclaredField("activity").apply { isAccessible = true }
-                    val act = activityField.get(activityRecord) as? Activity
-                    if (act != null && !act.isFinishing) {
-                        currentActivityRef = WeakReference(act)
-                        return act
-                    }
-                }
+        // 4. Fallback: App context unwrap
+        appContext?.let {
+            val unwrapped = findActivityFromContext(it)
+            if (unwrapped != null && !unwrapped.isFinishing && !unwrapped.isDestroyed) {
+                currentActivityRef = WeakReference(unwrapped)
+                return unwrapped
             }
-            null
-        }.getOrNull()
+        }
+
+        return null
     }
 
     /**
      * Enforces the dynamic range compressor settings directly into Cloudstream's
-     * SharedPreferences and DataStore on disk.
+     * SharedPreferences and DataStore on disk using synchronous commit().
      */
     fun enforceDiskSettings(context: Context): Boolean {
         return runCatching {
@@ -213,12 +253,39 @@ object DialogueBoostManager {
             val attack = getAttackMs(context)
             val release = getReleaseMs(context)
 
-            // 1. App-level settings (PreferenceManager)
-            getDefaultSharedPreferences(context).edit()
-                .putBoolean(CS_COMPRESSOR_ENABLED_KEY, alwaysOn)
-                .apply()
+            // 1. CloudStream App-level settings (PreferenceManager)
+            // This is CRUCIAL because CS3IPlayer reads:
+            // settingsManager.getBoolean("compressor_enabled_key", false)
+            // to decide whether to even instantiate DynamicRangeCompressor!
+            runCatching {
+                getDefaultSharedPreferences(context).edit()
+                    .putBoolean(CS_COMPRESSOR_ENABLED_KEY, alwaysOn)
+                    .putBoolean(CS_PLAYER_COMPRESSOR_ENABLED, alwaysOn)
+                    .commit()
+            }
 
-            // 2. Cloudstream DataStore ("rebuild_preference")
+            // 2. CloudStream DataStore ("rebuild_preference") via DataStore extension
+            runCatching {
+                context.setKey(CS_PLAYER_COMPRESSOR_ENABLED, alwaysOn)
+                context.setKey(CS_PLAYER_COMPRESSOR_THRESHOLD, threshold)
+                context.setKey(CS_PLAYER_COMPRESSOR_MAKEUP, makeup)
+                context.setKey(CS_PLAYER_COMPRESSOR_RATIO, ratio)
+                context.setKey(CS_PLAYER_COMPRESSOR_ATTACK, attack)
+                context.setKey(CS_PLAYER_COMPRESSOR_RELEASE, release)
+            }
+
+            // 3. CloudStreamApp companion setKey
+            runCatching {
+                CloudStreamApp.setKey(CS_PLAYER_COMPRESSOR_ENABLED, alwaysOn)
+                CloudStreamApp.setKey(CS_PLAYER_COMPRESSOR_THRESHOLD, threshold)
+                CloudStreamApp.setKey(CS_PLAYER_COMPRESSOR_MAKEUP, makeup)
+                CloudStreamApp.setKey(CS_PLAYER_COMPRESSOR_RATIO, ratio)
+                CloudStreamApp.setKey(CS_PLAYER_COMPRESSOR_ATTACK, attack)
+                CloudStreamApp.setKey(CS_PLAYER_COMPRESSOR_RELEASE, release)
+            }
+
+            // 4. Raw SharedPreferences writes to "rebuild_preference"
+            // FullScreenPlayer.restoreCompressorSettings() deserializes JSON strings
             val rebuildPrefs = context.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
             rebuildPrefs.edit()
                 .putString(CS_PLAYER_COMPRESSOR_ENABLED, if (alwaysOn) "true" else "false")
@@ -227,24 +294,36 @@ object DialogueBoostManager {
                 .putString(CS_PLAYER_COMPRESSOR_RATIO, ratio.toString())
                 .putString(CS_PLAYER_COMPRESSOR_ATTACK, attack.toString())
                 .putString(CS_PLAYER_COMPRESSOR_RELEASE, release.toString())
-                .apply()
-
-            // 3. Dynamic reflection on DataStore as additional safeguard
-            runCatching {
-                val dataStoreHelper = Class.forName("com.lagradost.cloudstream3.utils.DataStore")
-                val methods = dataStoreHelper.declaredMethods
-                val setKeyMethod = methods.firstOrNull { it.name == "setKey" && it.parameterTypes.size == 3 }
-                if (setKeyMethod != null) {
-                    setKeyMethod.isAccessible = true
-                    setKeyMethod.invoke(null, context, CS_PLAYER_COMPRESSOR_ENABLED, alwaysOn)
-                    setKeyMethod.invoke(null, context, CS_PLAYER_COMPRESSOR_THRESHOLD, threshold)
-                    setKeyMethod.invoke(null, context, CS_PLAYER_COMPRESSOR_MAKEUP, makeup)
-                    setKeyMethod.invoke(null, context, CS_PLAYER_COMPRESSOR_RATIO, ratio)
-                }
-            }
+                .putBoolean(CS_PLAYER_COMPRESSOR_ENABLED, alwaysOn)
+                .putFloat(CS_PLAYER_COMPRESSOR_THRESHOLD, threshold)
+                .putFloat(CS_PLAYER_COMPRESSOR_MAKEUP, makeup)
+                .putFloat(CS_PLAYER_COMPRESSOR_RATIO, ratio)
+                .commit()
 
             true
         }.getOrDefault(false)
+    }
+
+    /**
+     * Checks if a fragment is an active player fragment:
+     * - GeneratorPlayer (CloudStream's video player runtime fragment)
+     * - FullScreenPlayer
+     * - AbstractPlayerFragment
+     * - Any fragment class inheriting from PlayerFragment / FullScreenPlayer
+     */
+    fun isPlayerFragment(f: Any): Boolean {
+        var cls: Class<*>? = f.javaClass
+        while (cls != null && cls != Any::class.java) {
+            val name = cls.name
+            if (name.endsWith("GeneratorPlayer") ||
+                name.endsWith("FullScreenPlayer") ||
+                name.endsWith("AbstractPlayerFragment") ||
+                name.contains("PlayerFragment")) {
+                return true
+            }
+            cls = cls.superclass
+        }
+        return false
     }
 
     /**
@@ -261,18 +340,21 @@ object DialogueBoostManager {
     private fun findCompressorFromFragments(activity: Activity): Boolean {
         var activated = false
         runCatching {
-            val getSupportFmMethod = activity.javaClass.methods.firstOrNull { it.name == "getSupportFragmentManager" }
-                ?: return false
-            val fragmentManager = getSupportFmMethod.invoke(activity) ?: return false
+            val fm = runCatching {
+                val method = activity.javaClass.methods.firstOrNull { it.name == "getSupportFragmentManager" && it.parameterTypes.isEmpty() }
+                method?.invoke(activity)
+            }.getOrNull() ?: return false
 
-            fun scanFm(fm: Any) {
-                val getFragmentsMethod = fm.javaClass.methods.firstOrNull { it.name == "getFragments" } ?: return
-                val fragments = (getFragmentsMethod.invoke(fm) as? List<*>) ?: return
+            fun scanFm(fragmentManager: Any) {
+                val getFragmentsMethod = fragmentManager.javaClass.methods.firstOrNull { it.name == "getFragments" && it.parameterTypes.isEmpty() } ?: return
+                val fragments = (getFragmentsMethod.invoke(fragmentManager) as? List<*>) ?: return
                 for (f in fragments) {
                     if (f == null) continue
-                    val className = f.javaClass.name
-                    if (className.contains("FullScreenPlayer") || className.contains("PlayerFragment")) {
-                        // Invoke restoreCompressorSettings()
+                    if (isPlayerFragment(f)) {
+                        // 1. Force playBackCompressorEnabled = true on player fragment
+                        setMember(f, "playBackCompressorEnabled", true)
+
+                        // 2. Invoke restoreCompressorSettings()
                         runCatching {
                             var targetClass: Class<*>? = f.javaClass
                             while (targetClass != null && targetClass != Any::class.java) {
@@ -286,13 +368,22 @@ object DialogueBoostManager {
                             }
                         }
 
-                        // Also find compressor instance directly and verify
-                        val player = getMember(f, "player") ?: getMember(f, "_player")
+                        // 3. Resolve active CS3IPlayer instance:
+                        // Calling getPlayer() executes playerHostView?.player ?: _player
+                        val player = runCatching {
+                            val method = f.javaClass.methods.firstOrNull { it.name == "getPlayer" && it.parameterTypes.isEmpty() }
+                            method?.invoke(f)
+                        }.getOrNull()
+                            ?: getMember(f, "player")
+                            ?: getMember(f, "playerHostView")?.let { getMember(it, "player") }
+                            ?: getMember(f, "_player")
+
                         if (player != null) {
                             val compressor = getMember(player, "compressor")
                             if (compressor != null) {
                                 if (applyCompressorDirectly(compressor, activity)) {
                                     activated = true
+                                    Log.i(TAG, "Successfully enforced DialogueBoost compressor on active player fragment ($f)")
                                 }
                             }
                         }
@@ -300,7 +391,7 @@ object DialogueBoostManager {
 
                     // Recurse childFragmentManager
                     runCatching {
-                        val getChildFmMethod = f.javaClass.methods.firstOrNull { it.name == "getChildFragmentManager" }
+                        val getChildFmMethod = f.javaClass.methods.firstOrNull { it.name == "getChildFragmentManager" && it.parameterTypes.isEmpty() }
                         val childFm = getChildFmMethod?.invoke(f)
                         if (childFm != null) {
                             scanFm(childFm)
@@ -309,7 +400,7 @@ object DialogueBoostManager {
                 }
             }
 
-            scanFm(fragmentManager)
+            scanFm(fm)
         }
         return activated
     }
@@ -339,6 +430,7 @@ object DialogueBoostManager {
                     if (compressor != null) {
                         if (applyCompressorDirectly(compressor, activity)) {
                             activated = true
+                            Log.i(TAG, "Successfully enforced DialogueBoost compressor from PlayerView ($pv)")
                         }
                     }
                 }
@@ -365,7 +457,7 @@ object DialogueBoostManager {
         if (currentEnabled != alwaysOn) {
             setMember(compressor, "enabled", alwaysOn)
             changed = true
-            Log.i(TAG, "Automatically flipped in-memory compressor enabled: $currentEnabled -> $alwaysOn")
+            Log.i(TAG, "Flipped in-memory compressor enabled: $currentEnabled -> $alwaysOn")
         }
 
         // Check & apply threshold
@@ -464,23 +556,27 @@ object DialogueBoostManager {
         if (isDaemonRunning) return
         isDaemonRunning = true
 
-        CoroutineScope(Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.Main.immediate).launch {
             var diskSyncCounter = 0
             while (true) {
                 try {
-                    // Fast in-memory check and activation
+                    // Fast in-memory check and activation on Main thread
                     enforceActivePlayer()
 
-                    // Periodic disk sync (every ~4 seconds)
+                    // Periodic disk sync on IO dispatcher (every ~4 seconds)
                     diskSyncCounter++
                     if (diskSyncCounter >= 10) {
                         diskSyncCounter = 0
                         if (isAlwaysEnabled(context)) {
-                            enforceDiskSettings(context)
+                            withContext(Dispatchers.IO) {
+                                enforceDiskSettings(context)
+                            }
                         }
                     }
-                } catch (_: Throwable) {}
-                delay(400) // Checks every 400ms for fast activation when a video starts
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Auto-enforce tick warning: ${e.message}")
+                }
+                delay(350) // Checks every 350ms for lightning-fast auto-activation
             }
         }
     }
