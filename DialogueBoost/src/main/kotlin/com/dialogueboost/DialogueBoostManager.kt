@@ -1,14 +1,22 @@
 package com.dialogueboost
 
+import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Bundle
+import android.util.Log
+import android.view.View
+import android.view.ViewGroup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.lang.ref.WeakReference
 
 object DialogueBoostManager {
 
+    private const val TAG = "DialogueBoost"
     private const val PREFS_NAME = "dialogue_boost_plugin_prefs"
 
     // Extension internal settings keys
@@ -36,6 +44,8 @@ object DialogueBoostManager {
     const val PRESET_CUSTOM = "custom"
 
     private var isDaemonRunning = false
+    private var isLifecycleRegistered = false
+    private var currentActivityRef: WeakReference<Activity>? = null
 
     fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -114,10 +124,87 @@ object DialogueBoostManager {
     }
 
     /**
-     * Enforces the dynamic range compressor settings directly into Cloudstream's
-     * SharedPreferences and DataStore.
+     * Initializes hooks and background enforcement.
      */
-    fun enforceCompressorSettings(context: Context): Boolean {
+    fun init(context: Context) {
+        val app = (context.applicationContext as? Application) ?: (context as? Application)
+        if (app != null && !isLifecycleRegistered) {
+            isLifecycleRegistered = true
+            registerLifecycle(app)
+        }
+
+        // Run initial disk enforcement
+        if (isAlwaysEnabled(context)) {
+            enforceDiskSettings(context)
+        }
+
+        // Start active memory monitoring daemon
+        startAutoEnforceDaemon(context)
+    }
+
+    private fun registerLifecycle(app: Application) {
+        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                currentActivityRef = WeakReference(activity)
+            }
+
+            override fun onActivityStarted(activity: Activity) {
+                currentActivityRef = WeakReference(activity)
+                enforceActivePlayer(activity)
+            }
+
+            override fun onActivityResumed(activity: Activity) {
+                currentActivityRef = WeakReference(activity)
+                enforceActivePlayer(activity)
+            }
+
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {
+                if (currentActivityRef?.get() === activity) {
+                    currentActivityRef = null
+                }
+            }
+        })
+    }
+
+    /**
+     * Finds foreground Activity via registered ref or reflection fallback on ActivityThread.
+     */
+    fun getForegroundActivity(): Activity? {
+        val refAct = currentActivityRef?.get()
+        if (refAct != null && !refAct.isFinishing) {
+            return refAct
+        }
+
+        return runCatching {
+            val activityThreadClass = Class.forName("android.app.ActivityThread")
+            val currentActivityThread = activityThreadClass.getMethod("currentActivityThread").invoke(null)
+            val activitiesField = activityThreadClass.getDeclaredField("mActivities").apply { isAccessible = true }
+            val activities = activitiesField.get(currentActivityThread) as? Map<*, *> ?: return null
+            for (activityRecord in activities.values) {
+                if (activityRecord == null) continue
+                val recordClass = activityRecord.javaClass
+                val pausedField = recordClass.getDeclaredField("paused").apply { isAccessible = true }
+                if (!pausedField.getBoolean(activityRecord)) {
+                    val activityField = recordClass.getDeclaredField("activity").apply { isAccessible = true }
+                    val act = activityField.get(activityRecord) as? Activity
+                    if (act != null && !act.isFinishing) {
+                        currentActivityRef = WeakReference(act)
+                        return act
+                    }
+                }
+            }
+            null
+        }.getOrNull()
+    }
+
+    /**
+     * Enforces the dynamic range compressor settings directly into Cloudstream's
+     * SharedPreferences and DataStore on disk.
+     */
+    fun enforceDiskSettings(context: Context): Boolean {
         return runCatching {
             val alwaysOn = isAlwaysEnabled(context)
             val threshold = getThreshold(context)
@@ -142,7 +229,7 @@ object DialogueBoostManager {
                 .putString(CS_PLAYER_COMPRESSOR_RELEASE, release.toString())
                 .apply()
 
-            // 3. Attempt dynamic reflection on DataStore as an additional safeguard
+            // 3. Dynamic reflection on DataStore as additional safeguard
             runCatching {
                 val dataStoreHelper = Class.forName("com.lagradost.cloudstream3.utils.DataStore")
                 val methods = dataStoreHelper.declaredMethods
@@ -161,21 +248,239 @@ object DialogueBoostManager {
     }
 
     /**
-     * Starts a light daemon to guarantee settings remain enforced across
-     * view navigations and player instances.
+     * Scans for the active player fragment / PlayerView in memory and directly
+     * configures and enables the DynamicRangeCompressor instance in ExoPlayer.
+     */
+    fun enforceActivePlayer(activity: Activity? = null): Boolean {
+        val act = activity ?: getForegroundActivity() ?: return false
+        val r1 = findCompressorFromFragments(act)
+        val r2 = findCompressorFromViews(act)
+        return r1 || r2
+    }
+
+    private fun findCompressorFromFragments(activity: Activity): Boolean {
+        var activated = false
+        runCatching {
+            val getSupportFmMethod = activity.javaClass.methods.firstOrNull { it.name == "getSupportFragmentManager" }
+                ?: return false
+            val fragmentManager = getSupportFmMethod.invoke(activity) ?: return false
+
+            fun scanFm(fm: Any) {
+                val getFragmentsMethod = fm.javaClass.methods.firstOrNull { it.name == "getFragments" } ?: return
+                val fragments = (getFragmentsMethod.invoke(fm) as? List<*>) ?: return
+                for (f in fragments) {
+                    if (f == null) continue
+                    val className = f.javaClass.name
+                    if (className.contains("FullScreenPlayer") || className.contains("PlayerFragment")) {
+                        // Invoke restoreCompressorSettings()
+                        runCatching {
+                            var targetClass: Class<*>? = f.javaClass
+                            while (targetClass != null && targetClass != Any::class.java) {
+                                val restoreMethod = targetClass.declaredMethods.firstOrNull { it.name == "restoreCompressorSettings" }
+                                if (restoreMethod != null) {
+                                    restoreMethod.isAccessible = true
+                                    restoreMethod.invoke(f)
+                                    break
+                                }
+                                targetClass = targetClass.superclass
+                            }
+                        }
+
+                        // Also find compressor instance directly and verify
+                        val player = getMember(f, "player") ?: getMember(f, "_player")
+                        if (player != null) {
+                            val compressor = getMember(player, "compressor")
+                            if (compressor != null) {
+                                if (applyCompressorDirectly(compressor, activity)) {
+                                    activated = true
+                                }
+                            }
+                        }
+                    }
+
+                    // Recurse childFragmentManager
+                    runCatching {
+                        val getChildFmMethod = f.javaClass.methods.firstOrNull { it.name == "getChildFragmentManager" }
+                        val childFm = getChildFmMethod?.invoke(f)
+                        if (childFm != null) {
+                            scanFm(childFm)
+                        }
+                    }
+                }
+            }
+
+            scanFm(fragmentManager)
+        }
+        return activated
+    }
+
+    private fun findCompressorFromViews(activity: Activity): Boolean {
+        var activated = false
+        runCatching {
+            val decorView = activity.window?.decorView ?: return false
+            val playerViews = mutableListOf<View>()
+            fun collectViews(view: View) {
+                if (view.javaClass.name.contains("PlayerView")) {
+                    playerViews.add(view)
+                }
+                if (view is ViewGroup) {
+                    for (i in 0 until view.childCount) {
+                        val child = view.getChildAt(i) ?: continue
+                        collectViews(child)
+                    }
+                }
+            }
+            collectViews(decorView)
+
+            for (pv in playerViews) {
+                val player = getMember(pv, "player")
+                if (player != null) {
+                    val compressor = getMember(player, "compressor")
+                    if (compressor != null) {
+                        if (applyCompressorDirectly(compressor, activity)) {
+                            activated = true
+                        }
+                    }
+                }
+            }
+        }
+        return activated
+    }
+
+    /**
+     * Directly manipulates the in-memory DynamicRangeCompressor instance.
+     */
+    private fun applyCompressorDirectly(compressor: Any, context: Context): Boolean {
+        val alwaysOn = isAlwaysEnabled(context)
+        val targetThreshold = getThreshold(context)
+        val targetMakeup = getMakeup(context)
+        val targetRatio = getRatio(context)
+        val targetAttack = getAttackMs(context)
+        val targetRelease = getReleaseMs(context)
+
+        var changed = false
+
+        // Check & apply enabled
+        val currentEnabled = getMember(compressor, "enabled") as? Boolean
+        if (currentEnabled != alwaysOn) {
+            setMember(compressor, "enabled", alwaysOn)
+            changed = true
+            Log.i(TAG, "Automatically flipped in-memory compressor enabled: $currentEnabled -> $alwaysOn")
+        }
+
+        // Check & apply threshold
+        val currentThreshold = (getMember(compressor, "threshold") as? Number)?.toFloat()
+        if (currentThreshold != targetThreshold) {
+            setMember(compressor, "threshold", targetThreshold)
+            changed = true
+        }
+
+        // Check & apply makeupGain
+        val currentMakeup = (getMember(compressor, "makeupGain") as? Number)?.toFloat()
+        if (currentMakeup != targetMakeup) {
+            setMember(compressor, "makeupGain", targetMakeup)
+            changed = true
+        }
+
+        // Check & apply ratio
+        val currentRatio = (getMember(compressor, "ratio") as? Number)?.toFloat()
+        if (currentRatio != targetRatio) {
+            setMember(compressor, "ratio", targetRatio)
+            changed = true
+        }
+
+        // Check & apply attack/release
+        setMember(compressor, "attackMs", targetAttack)
+        setMember(compressor, "releaseMs", targetRelease)
+
+        return changed
+    }
+
+    private fun getMember(target: Any, name: String): Any? {
+        // Try getter e.g. getCompressor()
+        runCatching {
+            val getterName = "get" + name.replaceFirstChar { it.uppercase() }
+            val method = target.javaClass.methods.firstOrNull { it.name == getterName && it.parameterTypes.isEmpty() }
+            if (method != null) {
+                method.isAccessible = true
+                return method.invoke(target)
+            }
+        }
+        // Try method with identical name
+        runCatching {
+            val method = target.javaClass.methods.firstOrNull { it.name == name && it.parameterTypes.isEmpty() }
+            if (method != null) {
+                method.isAccessible = true
+                return method.invoke(target)
+            }
+        }
+        // Try field
+        runCatching {
+            var clazz: Class<*>? = target.javaClass
+            while (clazz != null && clazz != Any::class.java) {
+                val field = clazz.declaredFields.firstOrNull { it.name == name }
+                if (field != null) {
+                    field.isAccessible = true
+                    return field.get(target)
+                }
+                clazz = clazz.superclass
+            }
+        }
+        return null
+    }
+
+    private fun setMember(target: Any, name: String, value: Any): Boolean {
+        // Try setter e.g. setEnabled(...)
+        runCatching {
+            val setterName = "set" + name.replaceFirstChar { it.uppercase() }
+            val method = target.javaClass.methods.firstOrNull { it.name == setterName && it.parameterTypes.size == 1 }
+            if (method != null) {
+                method.isAccessible = true
+                method.invoke(target, value)
+                return true
+            }
+        }
+        // Try direct field
+        runCatching {
+            var clazz: Class<*>? = target.javaClass
+            while (clazz != null && clazz != Any::class.java) {
+                val field = clazz.declaredFields.firstOrNull { it.name == name }
+                if (field != null) {
+                    field.isAccessible = true
+                    field.set(target, value)
+                    return true
+                }
+                clazz = clazz.superclass
+            }
+        }
+        return false
+    }
+
+    /**
+     * Starts a continuous, ultra-light background daemon that monitors video playback
+     * and guarantees that newly instantiated compressors are immediately turned ON.
      */
     fun startAutoEnforceDaemon(context: Context) {
         if (isDaemonRunning) return
         isDaemonRunning = true
 
         CoroutineScope(Dispatchers.IO).launch {
+            var diskSyncCounter = 0
             while (true) {
                 try {
-                    if (isAlwaysEnabled(context)) {
-                        enforceCompressorSettings(context)
+                    // Fast in-memory check and activation
+                    enforceActivePlayer()
+
+                    // Periodic disk sync (every ~4 seconds)
+                    diskSyncCounter++
+                    if (diskSyncCounter >= 10) {
+                        diskSyncCounter = 0
+                        if (isAlwaysEnabled(context)) {
+                            enforceDiskSettings(context)
+                        }
                     }
                 } catch (_: Throwable) {}
-                delay(8000)
+                delay(400) // Checks every 400ms for fast activation when a video starts
             }
         }
     }
