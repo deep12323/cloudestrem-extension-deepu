@@ -1,6 +1,6 @@
 # Cloudstream Extensions Repo
 
-A collection of powerful, native [Cloudstream 3](https://github.com/recloudstream/cloudstream) plugins designed to transform your personal cloud accounts into on-demand streaming services.
+A collection of powerful, native [Cloudstream 3](https://github.com/recloudstream/cloudstream) plugins designed to transform your personal cloud accounts and torrents into on-demand streaming services.
 
 ## 🔌 Available Plugins
 
@@ -18,15 +18,38 @@ A fully-featured plugin to stream videos and audio directly from your personal G
 * **Dynamic Posters**: Automatically uses the first video's thumbnail as the cover art for folders.
 * **Shared Drive Support**: Full access to your Shared Drives.
 
+### 3. TorrServe Provider & Engine Tuner
+A native BitTorrent streaming engine and buffer management utility integrated directly into Cloudstream.
+* **Instant BitTorrent Streaming**: Search or paste any magnet link, `.torrent` file, or info hash to stream video content immediately over local HTTP without waiting for full downloads.
+* **⚡ 0% Preload (Instant Start)**: Break free from standard CloudStream 50% pre-buffering! Set preload buffer down to `0%` to start video playback immediately as the first chunks arrive.
+* **⏩ Forward Read-Ahead Customization**: Tune the forward read-ahead window (up to 95–100%) to cushion against network spikes and ensure seamless seeking.
+* **💾 Memory & Disk Cache Modes**: Adjust cache from 32MB up to 1GB+; choose between RAM for ultra-fast seeking or Disk storage to safeguard low-memory devices (Android TV / FireStick).
+* **🚫 Seeding Control (Leech Only)**: Toggle off background uploading to conserve mobile data, reduce battery consumption, and prevent bandwidth saturation.
+* **🤖 Auto-Applying Settings Daemon**: Custom buffer size, preload %, lookahead %, and upload rules persist permanently across app restarts and are auto-applied on cold boot and stream initialization.
+* **Multi-Episode & Subtitles**: Automatically unpacks multi-file torrents into episodes and extracts external/embedded subtitles on the fly.
+
 ---
 
 ## ⚙️ Installation & Setup
 
 1. **Install the Plugin Repo**: Open Cloudstream > Settings > Extensions > Add Repository, and paste this URL:
    ```text
-   https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/repo.json
+   https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/repo.json
    ```
-2. **Download the Plugins**: Install the **Telegram** or **Google Drive** extension from the repository list.
+2. **Download the Plugins**: Install the **TorrServe**, **Telegram**, or **Google Drive** extension from the repository list.
+
+---
+
+## ⚡ TorrServe Configuration Guide
+
+1. **Install TorrServe**: Install the `TorrServe` plugin from this repository in Cloudstream.
+2. **Access Settings**: Click the gear icon next to `TorrServe` under Settings > Extensions.
+3. **Choose a Profile or Customize**:
+   - **⚡ Instant Start (0%)**: 128MB buffer, 0% preload, 95% lookahead, leech-only — starts streaming instantly.
+   - **📺 FireStick / TV**: 48MB buffer, 15% preload, 85% lookahead, disk cache enabled — optimal for devices with low RAM.
+   - **🎬 4K Cinema**: 384MB buffer, 15% preload, 95% lookahead, RAM cache — optimal buffer cushion for high bitrate movies.
+   - **Custom Tuning**: Adjust stream buffer size, initial preload buffer (0–70%), forward read-ahead window (0–100%), and disable/enable upload seeding.
+4. **Automatic Persistence**: Settings saved here are automatically maintained and applied by the background daemon whenever Cloudstream launches or a torrent stream starts.
 
 ---
 
