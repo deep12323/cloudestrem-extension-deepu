@@ -83,6 +83,44 @@ object TorrServeManager {
         getPrefs(context).edit().putBoolean(KEY_DISABLE_UPLOAD, disable).apply()
     }
 
+    private var lastConfiguredUrl: String? = null
+    private var isWatcherRunning = false
+
+    fun startAutoConfigDaemon(context: Context) {
+        if (isWatcherRunning) return
+        isWatcherRunning = true
+
+        CoroutineScope(Dispatchers.IO).launch {
+            // 1. Pre-warm / pre-configure immediately on app start
+            runCatching {
+                val url = getOrStartServer(context)
+                val ok = applyBufferSettings(url, context)
+                if (ok) lastConfiguredUrl = url
+            }
+
+            // 2. Continuously watch for any new TorrServer instance started by CloudStream or other extensions
+            while (true) {
+                try {
+                    val currentUrl = getInbuiltUrlFromReflection()
+                        ?: if (isServerAlive("http://127.0.0.1:8090")) "http://127.0.0.1:8090" else null
+
+                    if (currentUrl != null && currentUrl != lastConfiguredUrl) {
+                        if (isServerAlive(currentUrl)) {
+                            activeServerUrl = currentUrl
+                            val applied = applyBufferSettings(currentUrl, context)
+                            if (applied) {
+                                lastConfiguredUrl = currentUrl
+                            }
+                        }
+                    }
+                } catch (e: Throwable) {
+                    // silently handle
+                }
+                delay(800)
+            }
+        }
+    }
+
     suspend fun getOrStartServer(context: Context?): String {
         activeServerUrl?.let { url ->
             if (isServerAlive(url)) return url
@@ -218,7 +256,9 @@ object TorrServeManager {
             val success = runCatching {
                 val url = getOrStartServer(context)
                 appliedUrl = url
-                applyBufferSettings(url, context)
+                val ok = applyBufferSettings(url, context)
+                if (ok) lastConfiguredUrl = url
+                ok
             }.getOrDefault(false)
 
             if (onComplete != null) {
