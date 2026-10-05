@@ -36,7 +36,7 @@ jobs:
             "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=12"
+              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=13"
             ]
           }' > builds/repo.json
 
@@ -83,12 +83,12 @@ jobs:
             {
               "name": "Dialogue Boost",
               "internalName": "DialogueBoost",
-              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/DialogueBoost.cs3?v=4",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/DialogueBoost.cs3?v=5",
               "tvTypes": ["Others"],
               "language": "en",
               "iconUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/av/volume_up/materialicons/48dp/2x/baseline_volume_up_white_48dp.png",
               "apiVersion": 10,
-              "version": 4,
+              "version": 5,
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Always-on dynamic range compressor & dialogue boost for crystal-clear movie and series audio"
