@@ -28,6 +28,13 @@ A native BitTorrent streaming engine and buffer management utility integrated di
 * **🤖 Auto-Applying Settings Daemon**: Custom buffer size, preload %, lookahead %, and upload rules persist permanently across app restarts and are auto-applied on cold boot and stream initialization.
 * **Multi-Episode & Subtitles**: Automatically unpacks multi-file torrents into episodes and extracts external/embedded subtitles on the fly.
 
+### 4. Skip Torrent Warning
+A specialized utility plugin that eliminates the annoying *"Stream Torrent - This video is a Torrent"* privacy confirmation popup in CloudStream.
+* **🛡️ Proactive Session Bypass**: Automatically authorizes CloudStream's in-memory torrent session state (`Torrent.hasAcceptedTorrentForThisSession = true`) upon startup and activity resume, preventing the dialog from ever being created or displayed.
+* **⚡ Zero Stalling / Zero Interruption**: Enjoy instant 1-click torrent streaming on mobile and Android TV without having to click "OK" every time the app opens.
+* **🎛️ Settings Gear Control**: Toggle bypass on or off, inspect live session bypass diagnostic state, and manually force-refresh bypass anytime.
+* **🛡️ Reactive Safety Net**: Even if CloudStream attempts to pop up the warning during edge cases, an ultra-fast watcher automatically detects and accepts the prompt with zero delay.
+
 ---
 
 ## ⚙️ Installation & Setup

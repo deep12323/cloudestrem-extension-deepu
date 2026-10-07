@@ -57,6 +57,50 @@ object TorrServeManager {
         val appCtx = context.applicationContext ?: context
         appContext = appCtx
         syncSettingsFileToDisk(appCtx)
+        enforceProactiveTorrentWarningBypass(appCtx)
+    }
+
+    fun enforceProactiveTorrentWarningBypass(context: Context? = null) {
+        val targetCtx = context ?: appContext
+        val classLoaders = listOfNotNull(
+            targetCtx?.classLoader,
+            Thread.currentThread().contextClassLoader,
+            TorrServeManager::class.java.classLoader
+        ).distinct()
+
+        for (cl in classLoaders) {
+            runCatching {
+                val torrentClass = Class.forName("com.lagradost.cloudstream3.ui.player.Torrent", true, cl)
+                val instance = runCatching {
+                    torrentClass.getDeclaredField("INSTANCE").apply { isAccessible = true }.get(null)
+                }.getOrNull()
+
+                val setter = torrentClass.methods.firstOrNull {
+                    it.name == "setHasAcceptedTorrentForThisSession" && it.parameterTypes.size == 1
+                } ?: torrentClass.declaredMethods.firstOrNull {
+                    it.name == "setHasAcceptedTorrentForThisSession" && it.parameterTypes.size == 1
+                }
+
+                if (setter != null) {
+                    setter.isAccessible = true
+                    if (instance != null) runCatching { setter.invoke(instance, true) }
+                    runCatching { setter.invoke(null, true) }
+                }
+
+                var currClass: Class<*>? = torrentClass
+                while (currClass != null && currClass != Any::class.java) {
+                    val field = runCatching {
+                        currClass.getDeclaredField("hasAcceptedTorrentForThisSession").apply { isAccessible = true }
+                    }.getOrNull()
+                    if (field != null) {
+                        if (instance != null) runCatching { field.set(instance, true) }
+                        runCatching { field.set(null, true) }
+                        break
+                    }
+                    currClass = currClass.superclass
+                }
+            }
+        }
     }
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -184,6 +228,8 @@ object TorrServeManager {
             while (true) {
                 try {
                     val targetCtx = appContext ?: context
+                    enforceProactiveTorrentWarningBypass(targetCtx)
+
                     val url = activeServerUrl
                         ?: getLastKnownUrl(targetCtx)?.takeIf { isServerAlive(it) }
                         ?: getInbuiltUrlFromReflection()

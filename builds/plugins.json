@@ -28,12 +28,12 @@
   {
     "name": "TorrServe",
     "internalName": "TorrServe",
-    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=3",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=4",
     "tvTypes": ["Torrent", "Movie", "TvSeries"],
     "language": "en",
     "iconUrl": "https://raw.githubusercontent.com/YouROK/TorrServer/master/server/web/public/favicon.ico",
     "apiVersion": 10,
-    "version": 3,
+    "version": 4,
     "authors": ["deepu2135"],
     "status": 1,
     "description": "TorrServer BitTorrent streaming engine, buffer tuner & seeding controls"
@@ -63,5 +63,18 @@
     "authors": ["deepu2135"],
     "status": 1,
     "description": "External player integrations: MPV Infinity (Mpv∞) and 1DM Video Downloader & Player in Preferred video player"
+  },
+  {
+    "name": "Skip Torrent Warning",
+    "internalName": "SkipTorrentWarning",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/SkipTorrentWarning.cs3?v=1",
+    "tvTypes": ["Others"],
+    "language": "en",
+    "iconUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/action/visibility_off/materialicons/48dp/2x/baseline_visibility_off_white_48dp.png",
+    "apiVersion": 10,
+    "version": 1,
+    "authors": ["deepu2135"],
+    "status": 1,
+    "description": "Proactive session bypass: permanently suppresses the 'Stream Torrent' privacy tracking warning popup for instant torrent streaming"
   }
 ]

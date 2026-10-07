@@ -5,19 +5,20 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 }
 
-version = 4
+version = 1
 
 cloudstream {
-    description = "TorrServer BitTorrent streaming engine, buffer tuner & seeding controls"
+    description = "Proactive session bypass: automatically suppresses the 'Stream Torrent' tracking warning popup for uninterrupted torrent playback"
     authors = listOf("deepu2135")
     status = 1
-    tvTypes = listOf("Torrent", "Movie", "TvSeries")
+    tvTypes = listOf("Others")
     requiresResources = false
     language = "en"
-    iconUrl = "https://raw.githubusercontent.com/YouROK/TorrServer/master/server/web/public/favicon.ico"
+    iconUrl = "https://raw.githubusercontent.com/google/material-design-icons/master/png/action/visibility_off/materialicons/48dp/2x/baseline_visibility_off_white_48dp.png"
 }
 
 android {
+    namespace = "com.skiptorrentwarning"
     defaultConfig {
         consumerProguardFiles("proguard-rules.pro")
     }
@@ -26,7 +27,7 @@ android {
 afterEvaluate {
     tasks.findByName("make")?.apply {
         doLast {
-            val cs3File = file("build/TorrServe.cs3")
+            val cs3File = file("build/SkipTorrentWarning.cs3")
             if (cs3File.exists()) {
                 val rootBuildsFile = rootProject.file("builds/${cs3File.name}")
                 rootBuildsFile.parentFile.mkdirs()
