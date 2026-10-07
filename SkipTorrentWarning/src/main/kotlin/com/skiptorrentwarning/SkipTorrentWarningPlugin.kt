@@ -177,6 +177,55 @@ class SkipTorrentWarningPlugin : Plugin() {
         masterCard.addView(masterSwitch)
         contentLayout.addView(masterCard)
 
+        // --- 3B. AUTO-EXPAND TORRENT STATUS CARD (OPTION 2) ---
+        var isAutoExpandStatus = SkipTorrentWarningManager.isAutoExpandStatusEnabled(ctx)
+
+        val statusCard = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(ctx, 16), dp(ctx, 14), dp(ctx, 16), dp(ctx, 14))
+            background = roundedDrawable(ctx, Color.parseColor("#1E293B"), 12, Color.parseColor("#334155"), 1)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, dp(ctx, 10), 0, 0)
+            }
+            layoutParams = lp
+        }
+
+        val statusTextLayout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val statusTitle = TextView(ctx).apply {
+            text = "Always Open Torrent Status in Controls"
+            textSize = 15f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#F8FAFC"))
+        }
+
+        val statusSub = TextView(ctx).apply {
+            text = "Auto-expands download speed, size & connections card in player controls. Disappears naturally when controls hide."
+            textSize = 11f
+            setTextColor(Color.parseColor("#A78BFA"))
+        }
+
+        statusTextLayout.addView(statusTitle)
+        statusTextLayout.addView(statusSub)
+
+        val statusSwitch = Switch(ctx).apply {
+            isChecked = isAutoExpandStatus
+            setOnCheckedChangeListener { _, isChecked ->
+                isAutoExpandStatus = isChecked
+            }
+        }
+
+        statusCard.addView(statusTextLayout)
+        statusCard.addView(statusSwitch)
+        contentLayout.addView(statusCard)
+
         // --- 4. EXPLANATION & PRIVACY CARD ---
         val infoCard = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -254,13 +303,15 @@ class SkipTorrentWarningPlugin : Plugin() {
             layoutParams = lp
             setOnClickListener {
                 val newState = masterSwitch.isChecked
+                val newStatusState = statusSwitch.isChecked
                 SkipTorrentWarningManager.setAutoBypassEnabled(ctx, newState)
+                SkipTorrentWarningManager.setAutoExpandStatusEnabled(ctx, newStatusState)
                 if (newState) {
                     SkipTorrentWarningManager.enforceProactiveBypass(ctx)
-                    Toast.makeText(ctx, "✓ Torrent popup bypass enabled", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "✓ Settings saved (Bypass & Auto-Expand active)", Toast.LENGTH_SHORT).show()
                 } else {
                     SkipTorrentWarningManager.resetSessionState(ctx)
-                    Toast.makeText(ctx, "Torrent popup warnings restored", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "✓ Settings saved", Toast.LENGTH_SHORT).show()
                 }
                 alertDialog?.dismiss()
             }
