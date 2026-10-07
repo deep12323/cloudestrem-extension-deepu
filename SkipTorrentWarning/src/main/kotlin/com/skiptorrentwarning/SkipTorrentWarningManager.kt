@@ -23,6 +23,7 @@ object SkipTorrentWarningManager {
     private const val TAG = "SkipTorrentWarning"
     private const val PREFS_NAME = "skip_torrent_warning_prefs"
     const val KEY_AUTO_BYPASS_ENABLED = "auto_bypass_enabled"
+    const val KEY_AUTO_EXPAND_STATUS_ENABLED = "auto_expand_status_enabled"
 
     private var appContext: Context? = null
     private var currentActivityRef: WeakReference<Activity>? = null
@@ -44,6 +45,14 @@ object SkipTorrentWarningManager {
         } else {
             resetSessionState(context)
         }
+    }
+
+    fun isAutoExpandStatusEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_AUTO_EXPAND_STATUS_ENABLED, true)
+    }
+
+    fun setAutoExpandStatusEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_AUTO_EXPAND_STATUS_ENABLED, enabled).apply()
     }
 
     /**
@@ -100,6 +109,9 @@ object SkipTorrentWarningManager {
                 currentActivityRef = WeakReference(activity)
                 if (isAutoBypassEnabled(activity)) {
                     enforceProactiveBypass(activity)
+                }
+                if (isAutoExpandStatusEnabled(activity)) {
+                    autoExpandTorrentStatus(activity)
                 }
             }
 
@@ -338,9 +350,48 @@ object SkipTorrentWarningManager {
     }
 
     /**
+     * Auto-Expands Torrent Download Status in Player Controls (Option 2):
+     * When player controls appear during torrent streaming, automatically makes
+     * the download status card (speed, size, connections, progress bar) visible
+     * without needing to manually tap the download toggle icon.
+     * When player controls hide, this card naturally disappears along with the controls!
+     */
+    fun autoExpandTorrentStatus(activity: Activity): Boolean {
+        return runCatching {
+            val res = activity.resources ?: return false
+            val pkg = activity.packageName
+            val downloadHeaderId = res.getIdentifier("download_header", "id", pkg)
+            val toggleId = res.getIdentifier("download_header_toggle", "id", pkg)
+
+            if (downloadHeaderId == 0) return false
+
+            val downloadHeader = activity.findViewById<View>(downloadHeaderId) ?: return false
+            val toggle = if (toggleId != 0) activity.findViewById<View>(toggleId) else null
+
+            // A torrent stream is active when the toggle icon is visible or downloadHeader is in the tree
+            val isTorrentActive = toggle?.visibility == View.VISIBLE ||
+                    (downloadHeader.parent != null && (downloadHeader.parent as? View)?.visibility == View.VISIBLE)
+
+            if (isTorrentActive) {
+                if (downloadHeader.visibility != View.VISIBLE) {
+                    downloadHeader.visibility = View.VISIBLE
+                    Log.d(TAG, "Option 2: Auto-expanded torrent download status in controls")
+                }
+                // Prevent accidental tap-to-dismiss collapsing the card
+                downloadHeader.setOnClickListener {
+                    // Kept visible
+                }
+                return true
+            }
+            false
+        }.getOrDefault(false)
+    }
+
+    /**
      * Background guardian daemon:
      * 1. Continuously keeps `Torrent.hasAcceptedTorrentForThisSession = true`.
      * 2. Inspects foreground window for any warning dialog that might pop up.
+     * 3. Auto-expands the torrent download status in player controls (Option 2).
      */
     fun startDaemon(context: Context) {
         if (isDaemonRunning) return
@@ -360,10 +411,17 @@ object SkipTorrentWarningManager {
                             autoDismissWarningDialog(act)
                         }
                     }
+
+                    // 3. Auto-expand torrent download status in controls (Option 2)
+                    if (isAutoExpandStatusEnabled(context)) {
+                        getForegroundActivity()?.let { act ->
+                            autoExpandTorrentStatus(act)
+                        }
+                    }
                 } catch (e: Throwable) {
                     Log.w(TAG, "Bypass daemon tick warning: ${e.message}")
                 }
-                delay(750)
+                delay(500)
             }
         }
     }
