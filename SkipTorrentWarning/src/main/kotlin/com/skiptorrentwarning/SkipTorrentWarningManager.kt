@@ -368,9 +368,8 @@ object SkipTorrentWarningManager {
             val downloadHeader = activity.findViewById<View>(downloadHeaderId) ?: return false
             val toggle = if (toggleId != 0) activity.findViewById<View>(toggleId) else null
 
-            // A torrent stream is active when the toggle icon is visible or downloadHeader is in the tree
-            val isTorrentActive = toggle?.visibility == View.VISIBLE ||
-                    (downloadHeader.parent != null && (downloadHeader.parent as? View)?.visibility == View.VISIBLE)
+            // A torrent stream is active exclusively when the toggle icon is visible in player controls
+            val isTorrentActive = toggle != null && toggle.visibility == View.VISIBLE
 
             if (isTorrentActive) {
                 if (downloadHeader.visibility != View.VISIBLE) {
