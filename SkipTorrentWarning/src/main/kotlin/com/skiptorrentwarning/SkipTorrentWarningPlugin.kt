@@ -7,12 +7,9 @@ import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
-import android.widget.Toast
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 
@@ -20,11 +17,10 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class SkipTorrentWarningPlugin : Plugin() {
 
     override fun load(context: Context) {
-        // Initialize proactive session bypass & background monitoring
         SkipTorrentWarningManager.init(context)
 
         openSettings = { ctx ->
-            showSettingsDialog(ctx)
+            showMinimalSettingsDialog(ctx)
         }
     }
 
@@ -54,275 +50,120 @@ class SkipTorrentWarningPlugin : Plugin() {
         }
     }
 
-    private fun showSettingsDialog(ctx: Context) {
-        var isBypassEnabled = SkipTorrentWarningManager.isAutoBypassEnabled(ctx)
-
+    private fun showMinimalSettingsDialog(ctx: Context) {
         val rootLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(ctx, 20), dp(ctx, 20), dp(ctx, 20), dp(ctx, 20))
-            background = roundedDrawable(ctx, Color.parseColor("#0F172A"), 16, Color.parseColor("#334155"), 1)
+            setPadding(dp(ctx, 20), dp(ctx, 20), dp(ctx, 20), dp(ctx, 16))
+            background = roundedDrawable(ctx, Color.parseColor("#0F172A"), 16, Color.parseColor("#1E293B"), 1)
         }
 
-        val scrollView = ScrollView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            isVerticalScrollBarEnabled = false
-        }
-
-        val contentLayout = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        // --- 1. HEADER ---
-        val headerLayout = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(ctx, 16))
-        }
-
-        val headerTextLayout = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
+        // --- TITLE ---
         val titleView = TextView(ctx).apply {
-            text = "🛡️ Skip Torrent Warning"
-            textSize = 20f
+            text = "Skip Torrent Warning"
+            textSize = 18f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#F8FAFC"))
+            setPadding(0, 0, 0, dp(ctx, 14))
+        }
+        rootLayout.addView(titleView)
+
+        fun createToggleRow(
+            title: String,
+            subtitle: String,
+            initialState: Boolean,
+            onChanged: (Boolean) -> Unit
+        ): LinearLayout {
+            val row = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(ctx, 14), dp(ctx, 12), dp(ctx, 14), dp(ctx, 12))
+                background = roundedDrawable(ctx, Color.parseColor("#1E293B"), 10)
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(ctx, 10))
+                }
+                layoutParams = lp
+            }
+
+            val textLayout = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val titleTv = TextView(ctx).apply {
+                text = title
+                textSize = 14f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.parseColor("#F1F5F9"))
+            }
+
+            val subTv = TextView(ctx).apply {
+                text = subtitle
+                textSize = 11f
+                setTextColor(Color.parseColor("#94A3B8"))
+                setPadding(0, dp(ctx, 2), 0, 0)
+            }
+
+            textLayout.addView(titleTv)
+            textLayout.addView(subTv)
+
+            val toggle = Switch(ctx).apply {
+                isChecked = initialState
+                setOnCheckedChangeListener { _, isChecked ->
+                    onChanged(isChecked)
+                }
+            }
+
+            row.addView(textLayout)
+            row.addView(toggle)
+            return row
         }
 
-        val subtitleView = TextView(ctx).apply {
-            text = "Proactive session bypass for seamless torrent streaming"
-            textSize = 12f
-            setTextColor(Color.parseColor("#94A3B8"))
-        }
-
-        headerTextLayout.addView(titleView)
-        headerTextLayout.addView(subtitleView)
-        headerLayout.addView(headerTextLayout)
-        contentLayout.addView(headerLayout)
-
-        // --- 2. LIVE DIAGNOSTIC BADGE ---
-        val statusBadge = TextView(ctx).apply {
-            textSize = 12f
-            setTypeface(null, Typeface.BOLD)
-            setPadding(dp(ctx, 12), dp(ctx, 8), dp(ctx, 12), dp(ctx, 8))
-        }
-
-        fun updateStatusBadge() {
-            val sessionAccepted = SkipTorrentWarningManager.getCurrentTorrentSessionState(ctx)
-            if (isBypassEnabled && sessionAccepted == true) {
-                statusBadge.text = "● Status: Proactive Bypass ACTIVE (Popup Hidden)"
-                statusBadge.setTextColor(Color.parseColor("#34D399"))
-                statusBadge.background = roundedDrawable(ctx, Color.parseColor("#064E3B"), 8, Color.parseColor("#059669"), 1)
-            } else if (isBypassEnabled) {
-                statusBadge.text = "● Status: Bypass Enabled (Ready for Next Stream)"
-                statusBadge.setTextColor(Color.parseColor("#38BDF8"))
-                statusBadge.background = roundedDrawable(ctx, Color.parseColor("#0C4A6E"), 8, Color.parseColor("#0284C7"), 1)
+        // Toggle 1: Auto-Suppress Warning
+        val bypassRow = createToggleRow(
+            title = "Skip Warning Dialog",
+            subtitle = "Automatically bypass 'Stream Torrent' popup",
+            initialState = SkipTorrentWarningManager.isAutoBypassEnabled(ctx)
+        ) { enabled ->
+            SkipTorrentWarningManager.setAutoBypassEnabled(ctx, enabled)
+            if (enabled) {
+                SkipTorrentWarningManager.enforceProactiveBypass(ctx)
             } else {
-                statusBadge.text = "○ Status: Bypass Disabled (Stock Warning Prompts Active)"
-                statusBadge.setTextColor(Color.parseColor("#94A3B8"))
-                statusBadge.background = roundedDrawable(ctx, Color.parseColor("#1E293B"), 8, Color.parseColor("#475569"), 1)
+                SkipTorrentWarningManager.resetSessionState(ctx)
             }
         }
-        updateStatusBadge()
-        contentLayout.addView(statusBadge)
+        rootLayout.addView(bypassRow)
 
-        val spacer1 = LinearLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(ctx, 14))
+        // Toggle 2: Show Torrent Status
+        val statusRow = createToggleRow(
+            title = "Show Torrent Stats",
+            subtitle = "Display speed & connections in player controls",
+            initialState = SkipTorrentWarningManager.isAutoExpandStatusEnabled(ctx)
+        ) { enabled ->
+            SkipTorrentWarningManager.setAutoExpandStatusEnabled(ctx, enabled)
         }
-        contentLayout.addView(spacer1)
+        rootLayout.addView(statusRow)
 
-        // --- 3. MASTER TOGGLE CARD ---
-        val masterCard = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(ctx, 16), dp(ctx, 14), dp(ctx, 16), dp(ctx, 14))
-            background = roundedDrawable(ctx, Color.parseColor("#1E293B"), 12, Color.parseColor("#334155"), 1)
-        }
-
-        val masterTextLayout = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val masterTitle = TextView(ctx).apply {
-            text = "Auto-Suppress Warning Popup"
-            textSize = 15f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#F8FAFC"))
-        }
-
-        val masterSub = TextView(ctx).apply {
-            text = "Permanently bypasses the 'Stream Torrent' dialog on all torrent streams"
-            textSize = 11f
-            setTextColor(Color.parseColor("#38BDF8"))
-        }
-
-        masterTextLayout.addView(masterTitle)
-        masterTextLayout.addView(masterSub)
-
-        val masterSwitch = Switch(ctx).apply {
-            isChecked = isBypassEnabled
-            setOnCheckedChangeListener { _, isChecked ->
-                isBypassEnabled = isChecked
-                updateStatusBadge()
-            }
-        }
-
-        masterCard.addView(masterTextLayout)
-        masterCard.addView(masterSwitch)
-        contentLayout.addView(masterCard)
-
-        // --- 3B. AUTO-EXPAND TORRENT STATUS CARD (OPTION 2) ---
-        var isAutoExpandStatus = SkipTorrentWarningManager.isAutoExpandStatusEnabled(ctx)
-
-        val statusCard = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(ctx, 16), dp(ctx, 14), dp(ctx, 16), dp(ctx, 14))
-            background = roundedDrawable(ctx, Color.parseColor("#1E293B"), 12, Color.parseColor("#334155"), 1)
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(0, dp(ctx, 10), 0, 0)
-            }
-            layoutParams = lp
-        }
-
-        val statusTextLayout = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val statusTitle = TextView(ctx).apply {
-            text = "Always Open Torrent Status in Controls"
-            textSize = 15f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#F8FAFC"))
-        }
-
-        val statusSub = TextView(ctx).apply {
-            text = "Auto-expands download speed, size & connections card in player controls. Disappears naturally when controls hide."
-            textSize = 11f
-            setTextColor(Color.parseColor("#A78BFA"))
-        }
-
-        statusTextLayout.addView(statusTitle)
-        statusTextLayout.addView(statusSub)
-
-        val statusSwitch = Switch(ctx).apply {
-            isChecked = isAutoExpandStatus
-            setOnCheckedChangeListener { _, isChecked ->
-                isAutoExpandStatus = isChecked
-            }
-        }
-
-        statusCard.addView(statusTextLayout)
-        statusCard.addView(statusSwitch)
-        contentLayout.addView(statusCard)
-
-        // --- 4. EXPLANATION & PRIVACY CARD ---
-        val infoCard = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(ctx, 14), dp(ctx, 12), dp(ctx, 14), dp(ctx, 12))
-            background = roundedDrawable(ctx, Color.parseColor("#111827"), 10, Color.parseColor("#1F2937"), 1)
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(0, dp(ctx, 14), 0, 0)
-            }
-            layoutParams = lp
-        }
-
-        val infoTitle = TextView(ctx).apply {
-            text = "ℹ️ How Proactive Session Bypass Works"
-            textSize = 12f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#CBD5E1"))
-            setPadding(0, 0, 0, dp(ctx, 4))
-        }
-
-        val infoBody = TextView(ctx).apply {
-            text = "CloudStream normally stores your torrent confirmation only in temporary memory (Torrent.hasAcceptedTorrentForThisSession) and resets it every time the app closes.\n\n" +
-                    "This plugin automatically initializes the session acceptance flag the instant CloudStream starts, preventing the 'Stream Torrent' popup from ever appearing.\n\n" +
-                    "🔒 Privacy Note: Torrent streaming still connects to P2P swarms. A VPN is recommended if your network or ISP monitors torrenting."
-            textSize = 11f
-            setTextColor(Color.parseColor("#94A3B8"))
-        }
-
-        infoCard.addView(infoTitle)
-        infoCard.addView(infoBody)
-        contentLayout.addView(infoCard)
-
-        // --- 5. ACTION BUTTONS ---
+        // --- DONE / CLOSE BUTTON ---
         var alertDialog: AlertDialog? = null
 
-        val actionsLayout = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-            setPadding(0, dp(ctx, 16), 0, 0)
-        }
-
-        val forceBypassBtn = Button(ctx).apply {
-            text = "⚡ Force Bypass Now"
-            textSize = 12f
-            isAllCaps = false
-            setTextColor(Color.parseColor("#38BDF8"))
-            background = roundedDrawable(ctx, Color.parseColor("#1E293B"), 8, Color.parseColor("#0284C7"), 1)
-            setPadding(dp(ctx, 12), dp(ctx, 8), dp(ctx, 12), dp(ctx, 8))
-            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginEnd = dp(ctx, 8)
-            }
-            layoutParams = lp
-            setOnClickListener {
-                val ok = SkipTorrentWarningManager.enforceProactiveBypass(ctx)
-                updateStatusBadge()
-                if (ok) {
-                    Toast.makeText(ctx, "✓ Proactive torrent bypass successfully enforced!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(ctx, "Bypass applied to active runtime.", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-
-        val saveBtn = Button(ctx).apply {
-            text = "✓ Save & Close"
-            textSize = 12f
-            isAllCaps = false
-            setTextColor(Color.WHITE)
+        val closeBtn = TextView(ctx).apply {
+            text = "Done"
+            textSize = 13f
             setTypeface(null, Typeface.BOLD)
-            background = roundedDrawable(ctx, Color.parseColor("#0284C7"), 8)
-            setPadding(dp(ctx, 16), dp(ctx, 8), dp(ctx, 16), dp(ctx, 8))
-            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setTextColor(Color.parseColor("#38BDF8"))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(ctx, 10), 0, dp(ctx, 4))
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             layoutParams = lp
+            isFocusable = true
             setOnClickListener {
-                val newState = masterSwitch.isChecked
-                val newStatusState = statusSwitch.isChecked
-                SkipTorrentWarningManager.setAutoBypassEnabled(ctx, newState)
-                SkipTorrentWarningManager.setAutoExpandStatusEnabled(ctx, newStatusState)
-                if (newState) {
-                    SkipTorrentWarningManager.enforceProactiveBypass(ctx)
-                    Toast.makeText(ctx, "✓ Settings saved (Bypass & Auto-Expand active)", Toast.LENGTH_SHORT).show()
-                } else {
-                    SkipTorrentWarningManager.resetSessionState(ctx)
-                    Toast.makeText(ctx, "✓ Settings saved", Toast.LENGTH_SHORT).show()
-                }
                 alertDialog?.dismiss()
             }
         }
-
-        actionsLayout.addView(forceBypassBtn)
-        actionsLayout.addView(saveBtn)
-        contentLayout.addView(actionsLayout)
-
-        scrollView.addView(contentLayout)
-        rootLayout.addView(scrollView)
+        rootLayout.addView(closeBtn)
 
         alertDialog = AlertDialog.Builder(ctx)
             .setView(rootLayout)
