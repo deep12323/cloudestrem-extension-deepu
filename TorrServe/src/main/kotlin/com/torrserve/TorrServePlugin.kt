@@ -713,6 +713,52 @@ class TorrServePlugin : Plugin() {
 
         mainLayout.addView(togglesCard)
 
+        // --- 8. CARD: HIGH-SPEED TRACKERS BOOST ---
+        val trackersCard = createCard()
+        val trackersTitle = TextView(ctx).apply {
+            text = "FAST STREAMING TRACKERS"
+            textSize = 11f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#94A3B8"))
+            setPadding(0, 0, 0, dp(ctx, 4))
+        }
+        val trackersBadge = TextView(ctx).apply {
+            text = "⚡ ${TorrServeManager.FAST_TRACKERS.size} Fast Trackers Injected & Active"
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#38BDF8"))
+            setPadding(0, dp(ctx, 2), 0, dp(ctx, 4))
+        }
+        val trackersDesc = TextView(ctx).apply {
+            text = "Automatically injects 40 Tier-1 public trackers (UDP/HTTP) into magnet links and syncs daily tracker lists into TorrServer. Maximizes peer discovery, eliminates initial stall time, and accelerates download speed."
+            textSize = 11f
+            setTextColor(Color.parseColor("#64748B"))
+            setPadding(0, 0, 0, dp(ctx, 8))
+        }
+
+        val trackerRefreshBtn = TextView(ctx).apply {
+            text = "🔄 Force Re-inject Trackers Now"
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#E0F2FE"))
+            background = roundedDrawable(ctx, Color.parseColor("#0C4A6E"), radiusDp = 8, strokeColor = Color.parseColor("#0284C7"), strokeWidthDp = 1)
+            setPadding(dp(ctx, 12), dp(ctx, 8), dp(ctx, 12), dp(ctx, 8))
+            isFocusable = true
+            val btnParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            layoutParams = btnParams
+            setOnClickListener {
+                TorrServeManager.injectTrackersToEngine(ctx)
+                TorrServeManager.syncSettingsFileToDisk(ctx)
+                Toast.makeText(ctx, "✓ Injected ${TorrServeManager.FAST_TRACKERS.size} fast trackers into engine", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        trackersCard.addView(trackersTitle)
+        trackersCard.addView(trackersBadge)
+        trackersCard.addView(trackersDesc)
+        trackersCard.addView(trackerRefreshBtn)
+        mainLayout.addView(trackersCard)
+
         // Full UI refresh lambda (for profiles)
         updateUiCallback = {
             refreshBufferChips()

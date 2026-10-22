@@ -25,7 +25,8 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
         val isHash = (trimmed.length == 40 || trimmed.length == 32) && trimmed.all { it.isLetterOrDigit() }
 
         if (isMagnet || isTorrentFile || isHash) {
-            val magnetUrl = if (isHash) "magnet:?xt=urn:btih:$trimmed" else trimmed
+            val rawMagnet = if (isHash) "magnet:?xt=urn:btih:$trimmed" else trimmed
+            val magnetUrl = TorrServeManager.enrichMagnetWithTrackers(rawMagnet)
             val title = parseTorrentTitle(magnetUrl)
 
             return listOf(
@@ -38,7 +39,7 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val magnetUrl = if (!url.startsWith("magnet:", ignoreCase = true) &&
+        val rawMagnet = if (!url.startsWith("magnet:", ignoreCase = true) &&
             !url.contains("://") &&
             (url.length == 40 || url.length == 32) &&
             url.all { it.isLetterOrDigit() }
@@ -47,6 +48,7 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
         } else {
             url
         }
+        val magnetUrl = TorrServeManager.enrichMagnetWithTrackers(rawMagnet)
 
         val title = parseTorrentTitle(magnetUrl)
         val ctx = pluginContext ?: TorrServeManager.appContext
@@ -55,6 +57,7 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
             val serverUrl = TorrServeManager.getOrStartServer(ctx)
             if (ctx != null) {
                 TorrServeManager.applyBufferSettings(serverUrl, ctx)
+                TorrServeManager.injectTrackersToEngine(ctx)
             }
             val hash = TorrServeManager.addTorrent(serverUrl, magnetUrl, title)
             val files = TorrServeManager.waitForFiles(serverUrl, hash, maxWaitSeconds = 8)
@@ -95,16 +98,18 @@ class TorrServeProvider(var pluginContext: Context? = null) : MainAPI() {
         val serverUrl = TorrServeManager.getOrStartServer(ctx)
         if (ctx != null) {
             TorrServeManager.applyBufferSettings(serverUrl, ctx)
+            TorrServeManager.injectTrackersToEngine(ctx)
         }
 
         val cleanTorrentUrl = data.substringBefore("#fileIndex=")
+        val enrichedTorrentUrl = TorrServeManager.enrichMagnetWithTrackers(cleanTorrentUrl)
         val targetFileId = if (data.contains("#fileIndex=")) {
             data.substringAfter("#fileIndex=").toIntOrNull()
         } else {
             null
         }
 
-        val hash = TorrServeManager.addTorrent(serverUrl, cleanTorrentUrl)
+        val hash = TorrServeManager.addTorrent(serverUrl, enrichedTorrentUrl)
         val timeout = if (ctx != null) TorrServeManager.getDisconnectTimeout(ctx) else 60
         val metaWait = (timeout / 2).coerceIn(15, 60)
         val files = TorrServeManager.waitForFiles(serverUrl, hash, maxWaitSeconds = metaWait)

@@ -13,6 +13,8 @@ import org.json.JSONObject
 import java.io.File
 import java.lang.reflect.Field
 import java.lang.reflect.Method
+import java.net.URLDecoder
+import java.net.URLEncoder
 
 object TorrServeManager {
     private const val PREFS_NAME = "TorrServePluginPrefs"
@@ -33,6 +35,120 @@ object TorrServeManager {
 
     val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "ts", "m4v")
     val SUBTITLE_EXTENSIONS = setOf("srt", "vtt", "ass", "ssa")
+
+    const val REMOTE_TRACKERS_URL = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
+
+    val FAST_TRACKERS = listOf(
+        "udp://tracker.opentrackr.org:1337/announce",
+        "http://tracker.opentrackr.org:1337/announce",
+        "udp://open.stealth.si:80/announce",
+        "udp://open.demonii.com:1337/announce",
+        "udp://exodus.desync.com:6969/announce",
+        "udp://tracker.torrent.eu.org:451/announce",
+        "udp://tracker.bittor.pw:1337/announce",
+        "udp://tracker.qu.ax:6969/announce",
+        "http://tracker.qu.ax:6969/announce",
+        "udp://tracker.skynetcloud.site:6969/announce",
+        "udp://tracker.ducks.party:1984/announce",
+        "udp://tracker.corpscorp.online:80/announce",
+        "udp://tracker-udp.gbitt.info:80/announce",
+        "udp://tracker.nyaa.vc:6969/announce",
+        "udp://tracker.gmi.gd:6969/announce",
+        "udp://tracker.tryhackx.org:6969/announce",
+        "udp://explodie.org:6969/announce",
+        "udp://tracker.dler.org:6969/announce",
+        "http://tracker2.dler.org:80/announce",
+        "udp://tracker2.dler.org:80/announce",
+        "http://tracker.dler.com:6969/announce",
+        "http://tracker.renfei.net:8080/announce",
+        "udp://tracker.peerfect.org:6969/announce",
+        "udp://tracker.openbittorrent.com:6969/announce",
+        "http://tracker.openbittorrent.com:80/announce",
+        "https://tracker.tamersunion.org:443/announce",
+        "udp://tracker.tiny-vps.com:6969/announce",
+        "https://tracker2.ctix.cn/announce",
+        "udp://retracker.lanta-net.ru:2710/announce",
+        "udp://tracker.cyberia.is:6969/announce",
+        "udp://tracker.moeking.me:6969/announce",
+        "https://tracker1.520.jp:443/announce",
+        "http://ipv4announce.sktorrent.eu:6969/announce",
+        "http://nyaa.tracker.wf:7777/announce",
+        "http://1337.abcvg.info:80/announce",
+        "http://bt1.archive.org:6969/announce",
+        "http://bt2.archive.org:6969/announce",
+        "udp://opentracker.i2p.rocks:6969/announce",
+        "udp://movies.zsw.ca:6969/announce",
+        "udp://p4p.arenabg.com:1337/announce"
+    )
+
+    val FAST_TRACKERS_STRING: String by lazy {
+        FAST_TRACKERS.joinToString("\n")
+    }
+
+    /**
+     * Appends all high-speed trackers to a magnet URI or raw info-hash if not already present.
+     * Ensures any torrent stream announces to 40+ responsive peers immediately.
+     */
+    fun enrichMagnetWithTrackers(uriOrHash: String): String {
+        val trimmed = uriOrHash.trim()
+        val isHash = (trimmed.length == 40 || trimmed.length == 32) && trimmed.all { it.isLetterOrDigit() }
+        val baseMagnet = if (isHash) {
+            "magnet:?xt=urn:btih:$trimmed"
+        } else if (trimmed.startsWith("magnet:", ignoreCase = true)) {
+            trimmed
+        } else {
+            return trimmed
+        }
+
+        val existingTrackers = mutableSetOf<String>()
+        val trRegex = Regex("[?&]tr=([^&]+)", RegexOption.IGNORE_CASE)
+        trRegex.findAll(baseMagnet).forEach { match ->
+            val decoded = runCatching { URLDecoder.decode(match.groupValues[1], "UTF-8") }.getOrNull()
+            if (decoded != null) {
+                existingTrackers.add(decoded.trim().lowercase())
+            }
+        }
+
+        val hasQuery = baseMagnet.contains("?")
+        var firstParam = !hasQuery
+        val sb = StringBuilder(baseMagnet)
+        for (tracker in FAST_TRACKERS) {
+            if (!existingTrackers.contains(tracker.lowercase())) {
+                val encoded = runCatching { URLEncoder.encode(tracker, "UTF-8") }.getOrNull() ?: tracker
+                if (firstParam) {
+                    sb.append("?tr=").append(encoded)
+                    firstParam = false
+                } else {
+                    sb.append("&tr=").append(encoded)
+                }
+            }
+        }
+
+        return sb.toString()
+    }
+
+    /**
+     * Injects fast trackers directly into the running TorrServer instance via reflection.
+     */
+    fun injectTrackersToEngine(context: Context? = null) {
+        val targetCtx = context ?: appContext
+        val classLoaders = listOfNotNull(
+            targetCtx?.classLoader,
+            Thread.currentThread().contextClassLoader,
+            TorrServeManager::class.java.classLoader
+        ).distinct()
+
+        val trackersBlock = FAST_TRACKERS_STRING
+
+        for (cl in classLoaders) {
+            runCatching {
+                val torrServerClass = Class.forName("torrServer.TorrServer", true, cl)
+                val addTrackersMethod = torrServerClass.getDeclaredMethod("addTrackers", String::class.java)
+                addTrackersMethod.isAccessible = true
+                addTrackersMethod.invoke(null, trackersBlock)
+            }
+        }
+    }
 
     data class TorrentFileInfo(
         val id: Int,
@@ -57,6 +173,7 @@ object TorrServeManager {
         val appCtx = context.applicationContext ?: context
         appContext = appCtx
         syncSettingsFileToDisk(appCtx)
+        injectTrackersToEngine(appCtx)
         enforceProactiveTorrentWarningBypass(appCtx)
     }
 
@@ -183,6 +300,12 @@ object TorrServeManager {
             val disableUpload = getDisableUpload(context)
             val timeoutSec = getDisconnectTimeout(context)
 
+            val trackersBlock = FAST_TRACKERS_STRING
+
+            // Write trackers.txt fallback file directly to TorrServer directories
+            try { File(context.cacheDir, "trackers.txt").writeText(trackersBlock) } catch (_: Throwable) {}
+            try { File(context.filesDir, "trackers.txt").writeText(trackersBlock) } catch (_: Throwable) {}
+
             val bitTorrObj = JSONObject().apply {
                 put("CacheSize", cacheMb * 1024L * 1024L)
                 put("PreloadCache", preload)
@@ -191,6 +314,10 @@ object TorrServeManager {
                 put("DisableUpload", disableUpload)
                 put("UploadRateLimit", if (disableUpload) 1 else 0)
                 put("TorrentDisconnectTimeout", timeoutSec)
+                put("RetrackersMode", 1) // 1 = Add retrackers automatically
+                put("TrackersListURL", REMOTE_TRACKERS_URL)
+                put("DefaultTrackers", trackersBlock)
+                put("DefaultTracker", trackersBlock)
                 put("StoreSettingsInJson", true)
             }
 
@@ -203,6 +330,10 @@ object TorrServeManager {
                 put("DisableUpload", disableUpload)
                 put("UploadRateLimit", if (disableUpload) 1 else 0)
                 put("TorrentDisconnectTimeout", timeoutSec)
+                put("RetrackersMode", 1)
+                put("TrackersListURL", REMOTE_TRACKERS_URL)
+                put("DefaultTrackers", trackersBlock)
+                put("DefaultTracker", trackersBlock)
                 put("StoreSettingsInJson", true)
             }
 
@@ -210,6 +341,7 @@ object TorrServeManager {
             try { File(context.cacheDir, "settings.json").writeText(jsonContent) } catch (_: Throwable) {}
             try { File(context.filesDir, "settings.json").writeText(jsonContent) } catch (_: Throwable) {}
         }
+        injectTrackersToEngine(context)
     }
 
     fun startAutoConfigDaemon(context: Context) {
@@ -229,6 +361,7 @@ object TorrServeManager {
                 try {
                     val targetCtx = appContext ?: context
                     enforceProactiveTorrentWarningBypass(targetCtx)
+                    injectTrackersToEngine(targetCtx)
 
                     val url = activeServerUrl
                         ?: getLastKnownUrl(targetCtx)?.takeIf { isServerAlive(it) }
@@ -371,7 +504,7 @@ object TorrServeManager {
 
                 runCatching {
                     val addTrackersMethod = torrServerClass.getDeclaredMethod("addTrackers", String::class.java)
-                    addTrackersMethod.invoke(null, "udp://tracker.opentrackr.org:1337/announce\nhttps://tracker2.ctix.cn/announce")
+                    addTrackersMethod.invoke(null, FAST_TRACKERS_STRING)
                 }
 
                 url
@@ -392,11 +525,13 @@ object TorrServeManager {
         val disableUpload = getDisableUpload(context)
         val timeoutSec = getDisconnectTimeout(context)
 
-        // Make sure settings on disk are also up to date
+        // Make sure settings and trackers on disk are also up to date
         syncSettingsFileToDisk(context)
+        injectTrackersToEngine(context)
 
         return try {
             val cacheBytes = cacheMb * 1024L * 1024L
+            val trackersBlock = FAST_TRACKERS_STRING
 
             val sets = JSONObject().apply {
                 put("CacheSize", cacheBytes)
@@ -406,12 +541,17 @@ object TorrServeManager {
                 put("DisableUpload", disableUpload)
                 put("UploadRateLimit", if (disableUpload) 1 else 0)
                 put("TorrentDisconnectTimeout", timeoutSec)
+                put("RetrackersMode", 1) // 1 = Add retrackers automatically
+                put("TrackersListURL", REMOTE_TRACKERS_URL)
+                put("DefaultTrackers", trackersBlock)
+                put("DefaultTracker", trackersBlock)
                 put("StoreSettingsInJson", true)
             }
 
             val payload = JSONObject().apply {
                 put("action", "set")
                 put("sets", sets)
+                put("config", sets)
             }
 
             val res = app.post(
@@ -450,9 +590,10 @@ object TorrServeManager {
     }
 
     suspend fun addTorrent(serverUrl: String, torrentUrl: String, title: String = "CloudStream Stream"): String {
+        val finalUrl = enrichMagnetWithTrackers(torrentUrl)
         val payload = JSONObject().apply {
             put("action", "add")
-            put("link", torrentUrl)
+            put("link", finalUrl)
             put("title", title)
             put("save_to_db", false)
         }
