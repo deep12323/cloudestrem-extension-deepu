@@ -36,7 +36,7 @@ jobs:
             "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=16"
+              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=17"
             ]
           }' > builds/repo.json
 
@@ -96,15 +96,15 @@ jobs:
             {
               "name": "Skip Torrent Warning",
               "internalName": "SkipTorrentWarning",
-              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/SkipTorrentWarning.cs3?v=2",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/SkipTorrentWarning.cs3?v=3",
               "tvTypes": ["Others"],
               "language": "en",
               "iconUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/action/visibility_off/materialicons/48dp/2x/baseline_visibility_off_white_48dp.png",
               "apiVersion": 10,
-              "version": 2,
+              "version": 3,
               "authors": ["deepu2135"],
               "status": 1,
-              "description": "Suppresses 'Stream Torrent' privacy tracking warning & auto-expands torrent download status (speed, size, connections) in player controls"
+              "description": "Bypasses 'Stream Torrent' confirmation dialog and shows stream stats in player controls"
             }
           ]' > builds/plugins.json
 

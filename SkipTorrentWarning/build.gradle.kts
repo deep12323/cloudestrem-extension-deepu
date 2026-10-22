@@ -5,10 +5,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 }
 
-version = 2
+version = 3
 
 cloudstream {
-    description = "Proactive session bypass & auto-expanded download status: suppresses 'Stream Torrent' warning and auto-opens torrent download status in player controls"
+    description = "Bypasses torrent warning dialog and shows download stats in player controls"
     authors = listOf("deepu2135")
     status = 1
     tvTypes = listOf("Others")
