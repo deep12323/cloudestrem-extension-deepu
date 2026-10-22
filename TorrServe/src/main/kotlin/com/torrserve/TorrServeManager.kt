@@ -589,6 +589,35 @@ object TorrServeManager {
         }
     }
 
+    @Volatile
+    var lastActiveHash: String? = null
+        private set
+
+    @Volatile
+    private var keepAliveJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Active Keep-Alive Heartbeat:
+     * Periodically pings TorrServer every 3.5s with the active torrent hash.
+     * Prevents TorrServer from treating the stream as idle and dropping peer/socket connections.
+     */
+    fun startKeepAliveHeartbeat(serverUrl: String, hash: String) {
+        lastActiveHash = hash
+        keepAliveJob?.cancel()
+        keepAliveJob = CoroutineScope(Dispatchers.IO).launch {
+            while (lastActiveHash == hash) {
+                try {
+                    val getPayload = JSONObject().apply {
+                        put("action", "get")
+                        put("hash", hash)
+                    }
+                    app.post("$serverUrl/torrents", json = getPayload, timeout = 3L)
+                } catch (_: Throwable) {}
+                delay(3500)
+            }
+        }
+    }
+
     suspend fun addTorrent(serverUrl: String, torrentUrl: String, title: String = "CloudStream Stream"): String {
         val finalUrl = enrichMagnetWithTrackers(torrentUrl)
         val payload = JSONObject().apply {
@@ -604,7 +633,9 @@ object TorrServeManager {
             timeout = 10L
         ).text
 
-        return JSONObject(response).getString("hash")
+        val hash = JSONObject(response).getString("hash")
+        startKeepAliveHeartbeat(serverUrl, hash)
+        return hash
     }
 
     suspend fun waitForFiles(serverUrl: String, hash: String, maxWaitSeconds: Int = 20): List<TorrentFileInfo> {

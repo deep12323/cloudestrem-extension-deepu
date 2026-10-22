@@ -28,15 +28,15 @@
   {
     "name": "TorrServe",
     "internalName": "TorrServe",
-    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=5",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=6",
     "tvTypes": ["Torrent", "Movie", "TvSeries"],
     "language": "en",
     "iconUrl": "https://raw.githubusercontent.com/YouROK/TorrServer/master/server/web/public/favicon.ico",
     "apiVersion": 10,
-    "version": 5,
+    "version": 6,
     "authors": ["deepu2135"],
     "status": 1,
-    "description": "TorrServer BitTorrent streaming engine with 40+ high-speed trackers, buffer tuner & seeding controls"
+    "description": "TorrServer BitTorrent streaming engine with active keep-alive, 40+ high-speed trackers, buffer tuner & seeding controls"
   },
   {
     "name": "External Players (MPV Infinity & 1DM)",

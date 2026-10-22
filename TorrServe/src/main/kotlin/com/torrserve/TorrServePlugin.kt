@@ -177,11 +177,11 @@ class TorrServePlugin : Plugin() {
             profileRow.addView(btn)
         }
 
-        addProfileBtn("⚡ Fast Stream", 128L, 10, 95, 60, false, false)
-        addProfileBtn("📺 FireStick / TV", 48L, 15, 85, 90, true, false)
-        addProfileBtn("🎬 4K Cinema", 384L, 15, 95, 180, false, false)
-        addProfileBtn("🛡️ Resilient (Slow Seeds)", 200L, 20, 95, 300, false, false)
-        addProfileBtn("🔄 Stock Default", 64L, 50, 95, 30, false, false)
+        addProfileBtn("🛡️ Keep Alive (No Drop)", 128L, 15, 95, 300, false, false)
+        addProfileBtn("⚡ Fast Stream", 128L, 10, 95, 180, false, false)
+        addProfileBtn("📺 FireStick / TV", 48L, 15, 85, 180, true, false)
+        addProfileBtn("🎬 4K Cinema", 384L, 15, 95, 300, false, false)
+        addProfileBtn("🔄 Stock Default", 64L, 50, 95, 60, false, false)
 
         fun createCard(): LinearLayout {
             return LinearLayout(ctx).apply {
@@ -231,6 +231,13 @@ class TorrServePlugin : Plugin() {
 
         fun refreshBufferChips() {
             cacheValueLabel.text = "$currentCacheMb MB"
+            cacheDescLabel.text = when {
+                currentCacheMb < 32 -> "⚠️ Dangerously low ($currentCacheMb MB): Causes buffer starvation & disconnects! Set to ≥64MB."
+                currentCacheMb < 64 -> "Minimal (32–48MB): For low-RAM devices; may stutter on high-bitrate 1080p."
+                currentCacheMb <= 256 -> "✓ Recommended (64–256MB): Smooth continuous streaming without stalling."
+                else -> "Large Cushion (256MB+): Optimal for high-bitrate 4K movies and instant seeks."
+            }
+            cacheDescLabel.setTextColor(if (currentCacheMb < 32) Color.parseColor("#EF4444") else Color.parseColor("#64748B"))
             chipViews.forEach { chip ->
                 val sizeTag = chip.tag as? Long
                 if (sizeTag == currentCacheMb) {
@@ -422,11 +429,12 @@ class TorrServePlugin : Plugin() {
             val clamped = percent.coerceIn(5, 100)
             readAheadValueLabel.text = "$clamped%"
             readAheadDescLabel.text = when {
-                clamped < 50 -> "Low Lookahead: Only buffers a minimal chunk window ahead"
+                clamped < 50 -> "⚠️ Dangerously low ($clamped%): Halts peer downloads and causes disconnects! Use 95%."
                 clamped < 80 -> "Balanced: Buffers moderately ahead"
                 clamped < 95 -> "High Forward Window: Good buffer cushion for high bitrates"
-                else -> "Recommended: Actively pre-buffers upcoming pieces to prevent playback stalls"
+                else -> "⭐ Recommended (95%): Continuously buffers upcoming pieces to prevent playback stalls"
             }
+            readAheadDescLabel.setTextColor(if (clamped < 50) Color.parseColor("#EF4444") else Color.parseColor("#64748B"))
         }
 
         readAheadSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -497,7 +505,7 @@ class TorrServePlugin : Plugin() {
         }
 
         val timeoutSeekBar = SeekBar(ctx).apply {
-            max = 300
+            max = 600
             isFocusable = true
             setPadding(0, dp(ctx, 8), 0, dp(ctx, 8))
         }
@@ -511,9 +519,9 @@ class TorrServePlugin : Plugin() {
             timeoutDescLabel.text = when {
                 clamped < 30 -> "Short: Server quickly disconnects stalled streams (Risk of Source Error 2000)"
                 clamped == 30 -> "Stock Default: 30 seconds before disconnecting idle/stalled torrents"
-                clamped <= 60 -> "Recommended: 60s timeout provides stability during temporary peer slowdowns"
+                clamped <= 60 -> "Standard: 60s timeout provides basic stability during temporary slowdowns"
                 clamped <= 180 -> "Extended: 2–3 minutes cushion for slow torrents and low seed counts"
-                else -> "Maximum Resilience: 5+ minutes wait before dropping inactive streams"
+                else -> "🛡️ Keep-Alive Resilience: ${clamped / 60}m wait prevents drops during long buffering or pauses"
             }
         }
 
@@ -536,9 +544,9 @@ class TorrServePlugin : Plugin() {
         }
         timeoutChipsScroll.addView(timeoutChipsRow)
 
-        listOf(30, 60, 120, 180, 300).forEach { t ->
+        listOf(60, 120, 180, 300, 600).forEach { t ->
             val chip = TextView(ctx).apply {
-                text = if (t == 60) "⭐ 60s" else if (t >= 60) "${t / 60}m" else "${t}s"
+                text = if (t == 300) "⭐ 5m" else if (t == 600) "🛡️ 10m" else if (t >= 60) "${t / 60}m" else "${t}s"
                 textSize = 11f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.parseColor("#CBD5E1"))
