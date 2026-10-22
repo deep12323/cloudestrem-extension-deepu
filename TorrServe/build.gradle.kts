@@ -5,10 +5,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 }
 
-version = 4
+version = 5
 
 cloudstream {
-    description = "TorrServer BitTorrent streaming engine, buffer tuner & seeding controls"
+    description = "TorrServer BitTorrent streaming engine with 40+ high-speed trackers, buffer tuner & seeding controls"
     authors = listOf("deepu2135")
     status = 1
     tvTypes = listOf("Torrent", "Movie", "TvSeries")

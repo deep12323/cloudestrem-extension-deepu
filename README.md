@@ -21,6 +21,7 @@ A fully-featured plugin to stream videos and audio directly from your personal G
 ### 3. TorrServe Provider & Engine Tuner
 A native BitTorrent streaming engine and buffer management utility integrated directly into Cloudstream.
 * **Instant BitTorrent Streaming**: Search or paste any magnet link, `.torrent` file, or info hash to stream video content immediately over local HTTP without waiting for full downloads.
+* **🚀 40+ High-Speed Streaming Trackers**: Automatically injects 40 Tier-1 public BitTorrent trackers into every magnet link and syncs daily tracker lists into TorrServer (`RetrackersMode = 1`). Drastically accelerates peer/seeder discovery, speeds up initial chunk buffering, and prevents stream stalling.
 * **⚡ 0% Preload (Instant Start)**: Break free from standard CloudStream 50% pre-buffering! Set preload buffer down to `0%` to start video playback immediately as the first chunks arrive.
 * **⏩ Forward Read-Ahead Customization**: Tune the forward read-ahead window (up to 95–100%) to cushion against network spikes and ensure seamless seeking.
 * **💾 Memory & Disk Cache Modes**: Adjust cache from 32MB up to 1GB+; choose between RAM for ultra-fast seeking or Disk storage to safeguard low-memory devices (Android TV / FireStick).
@@ -47,21 +48,6 @@ A specialized utility plugin that eliminates the annoying *"Stream Torrent - Thi
 
 ---
 
-## 🎙️ Dialogue Boost Configuration Guide
-
-A dedicated audio enhancement extension that brings **always-on dynamic range compression** to Cloudstream:
-
-1. **Install Dialogue Boost**: Install the `Dialogue Boost` plugin from this repository in Cloudstream.
-2. **Access Settings**: Tap the gear icon next to `Dialogue Boost` under **Settings > Extensions**.
-3. **Features & Presets**:
-   - **Always Enable Compressor**: Forces dynamic range compression to activate automatically for every video from the first frame.
-   - **🎬 Dialogue Boost (Recommended)**: -24 dB threshold, +12 dB makeup gain, 8:1 ratio — dramatically amplifies quiet whispers and dialogues while transparently leveling loud scenes.
-   - **🌙 Night Mode / Action Limiter**: -30 dB threshold, +16 dB makeup gain, 12:1 ratio — heavy compression preventing volume spikes during late-night viewing.
-   - **🔈 Light**: -18 dB threshold, +4 dB makeup gain, 4:1 ratio — subtle leveling tailored for headphones.
-   - **🎛️ Custom Tuning**: Fine-tune threshold and makeup gain sliders to your personal preference.
-
----
-
 ## ⚡ TorrServe Configuration Guide
 
 1. **Install TorrServe**: Install the `TorrServe` plugin from this repository in Cloudstream.
@@ -71,6 +57,7 @@ A dedicated audio enhancement extension that brings **always-on dynamic range co
    - **📺 FireStick / TV**: 48MB buffer, 15% preload, 85% lookahead, disk cache enabled — optimal for devices with low RAM.
    - **🎬 4K Cinema**: 384MB buffer, 15% preload, 95% lookahead, RAM cache — optimal buffer cushion for high bitrate movies.
    - **Custom Tuning**: Adjust stream buffer size, initial preload buffer (0–70%), forward read-ahead window (0–100%), and disable/enable upload seeding.
+   - **🚀 Fast Trackers**: 40+ high-speed public trackers are automatically active and injected; use "Force Re-inject Trackers Now" anytime to refresh.
 4. **Automatic Persistence**: Settings saved here are automatically maintained and applied by the background daemon whenever Cloudstream launches or a torrent stream starts.
 
 ---
