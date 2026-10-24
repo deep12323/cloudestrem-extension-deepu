@@ -3,12 +3,17 @@
     "name": "Telegram",
     "internalName": "TelegramProvider",
     "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TelegramProvider.cs3?v=2",
-    "tvTypes": ["Movie", "TvSeries"],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
     "language": "en",
     "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/icon.png",
     "apiVersion": 10,
     "version": 145,
-    "authors": ["deepu2135"],
+    "authors": [
+      "deepu2135"
+    ],
     "status": 1,
     "description": "Stream any media from your Telegram chats and channels on-demand"
   },
@@ -16,12 +21,17 @@
     "name": "Google Drive",
     "internalName": "GoogleDriveProvider",
     "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/GoogleDriveProvider.cs3?v=2",
-    "tvTypes": ["Movie", "TvSeries"],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
     "language": "en",
     "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png",
     "apiVersion": 10,
     "version": 11,
-    "authors": ["deepu2135"],
+    "authors": [
+      "deepu2135"
+    ],
     "status": 1,
     "description": "Stream video and audio from your Google Drive"
   },
@@ -29,12 +39,18 @@
     "name": "TorrServe",
     "internalName": "TorrServe",
     "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TorrServe.cs3?v=6",
-    "tvTypes": ["Torrent", "Movie", "TvSeries"],
+    "tvTypes": [
+      "Torrent",
+      "Movie",
+      "TvSeries"
+    ],
     "language": "en",
     "iconUrl": "https://raw.githubusercontent.com/YouROK/TorrServer/master/server/web/public/favicon.ico",
     "apiVersion": 10,
     "version": 6,
-    "authors": ["deepu2135"],
+    "authors": [
+      "deepu2135"
+    ],
     "status": 1,
     "description": "TorrServer BitTorrent streaming engine with active keep-alive, 40+ high-speed trackers, buffer tuner & seeding controls"
   },
@@ -42,26 +58,51 @@
     "name": "External Players (MPV Infinity & 1DM)",
     "internalName": "ExternalPlayers",
     "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/ExternalPlayers.cs3?v=1",
-    "tvTypes": ["Others"],
+    "tvTypes": [
+      "Others"
+    ],
     "language": "en",
     "iconUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/av/play_circle_filled/materialicons/48dp/2x/baseline_play_circle_filled_white_48dp.png",
     "apiVersion": 10,
     "version": 1,
-    "authors": ["deepu2135"],
+    "authors": [
+      "deepu2135"
+    ],
     "status": 1,
-    "description": "External player integrations: MPV Infinity (Mpv∞) and 1DM Video Downloader & Player in Preferred video player"
+    "description": "External player integrations: MPV Infinity (Mpv\u221e) and 1DM Video Downloader & Player in Preferred video player"
   },
   {
     "name": "Skip Torrent Warning",
     "internalName": "SkipTorrentWarning",
     "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/SkipTorrentWarning.cs3?v=3",
-    "tvTypes": ["Others"],
+    "tvTypes": [
+      "Others"
+    ],
     "language": "en",
     "iconUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/action/visibility_off/materialicons/48dp/2x/baseline_visibility_off_white_48dp.png",
     "apiVersion": 10,
     "version": 3,
-    "authors": ["deepu2135"],
+    "authors": [
+      "deepu2135"
+    ],
     "status": 1,
     "description": "Bypasses 'Stream Torrent' confirmation dialog and shows stream stats in player controls"
+  },
+  {
+    "name": "AdultTvChannels",
+    "internalName": "AdultTvChannels",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/AdultTvChannels.cs3",
+    "tvTypes": [
+      "NSFW"
+    ],
+    "language": "en",
+    "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://adult-tv-channels.com&size=128",
+    "apiVersion": 10,
+    "version": 5,
+    "authors": [
+      "kraptor"
+    ],
+    "status": 1,
+    "description": "Watch free adult TV channels online"
   }
 ]
