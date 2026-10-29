@@ -89,23 +89,6 @@
     "description": "Bypasses 'Stream Torrent' confirmation dialog and shows stream stats in player controls"
   },
   {
-    "name": "AdultTvChannels",
-    "internalName": "AdultTvChannels",
-    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/AdultTvChannels.cs3",
-    "tvTypes": [
-      "NSFW"
-    ],
-    "language": "en",
-    "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://adult-tv-channels.com&size=128",
-    "apiVersion": 10,
-    "version": 5,
-    "authors": [
-      "kraptor"
-    ],
-    "status": 1,
-    "description": "Watch free adult TV channels online"
-  },
-  {
     "name": "Popup Blocker",
     "internalName": "PopupBlocker",
     "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/PopupBlocker.cs3?v=1",

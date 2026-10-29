@@ -24,7 +24,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Providers
-        run: ./gradlew :TelegramProvider:make :GoogleDriveProvider:make :TorrServe:make :ExternalPlayers:make :SkipTorrentWarning:make :AdultTvChannels:make :PopupBlocker:make
+        run: ./gradlew :TelegramProvider:make :GoogleDriveProvider:make :TorrServe:make :ExternalPlayers:make :SkipTorrentWarning:make :PopupBlocker:make
 
       - name: Generate repo.json and plugins.json
         run: |
@@ -105,19 +105,6 @@ jobs:
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Bypasses 'Stream Torrent' confirmation dialog and shows stream stats in player controls"
-            },
-            {
-              "name": "AdultTvChannels",
-              "internalName": "AdultTvChannels",
-              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/AdultTvChannels.cs3?v=1",
-              "tvTypes": ["NSFW"],
-              "language": "en",
-              "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://adult-tv-channels.com&size=128",
-              "apiVersion": 10,
-              "version": 5,
-              "authors": ["kraptor"],
-              "status": 1,
-              "description": "Watch free adult TV channels online"
             },
             {
               "name": "Popup Blocker",
