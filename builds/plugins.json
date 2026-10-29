@@ -104,5 +104,22 @@
     ],
     "status": 1,
     "description": "Watch free adult TV channels online"
+  },
+  {
+    "name": "Popup Blocker",
+    "internalName": "PopupBlocker",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/PopupBlocker.cs3?v=1",
+    "tvTypes": [
+      "Others"
+    ],
+    "language": "en",
+    "iconUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/action/shield/materialicons/48dp/2x/baseline_shield_white_48dp.png",
+    "apiVersion": 10,
+    "version": 1,
+    "authors": [
+      "deepu2135"
+    ],
+    "status": 1,
+    "description": "Hides and blocks donation popups, ads, and support banners across all Cloudstream extensions (e.g. CNCVerse)"
   }
 ]
