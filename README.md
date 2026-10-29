@@ -35,6 +35,13 @@ A lightweight utility plugin that bypasses the *"Stream Torrent"* confirmation d
 * **📊 Player Stats Card**: Automatically expands download speed, file size, and active connection stats inside player controls.
 * **🎛️ Minimal Settings**: Toggle warning bypass and player stats with clean, instant toggles.
 
+### 5. Popup & Donation Blocker
+A guardian shield plugin that completely eliminates intrusive donation prompts, monthly mission popups, and ad banners across all Cloudstream extensions (specifically designed for CNCVerse).
+* **🛡️ Zero Popups**: Automatically intercepts and dismisses "Keep CNCVerse Alive" modal dialogs before they render a single frame.
+* **⚡ Proactive Date Immunization**: Pre-authorizes donation session dates in SharedPreferences so extensions skip network stats calls and donation checks entirely.
+* **🚫 Ad Redirect Shield**: Blocks secondary sponsor/ad redirects (`omg10.com`, etc.).
+* **🎛️ Minimal Dark Settings**: Customize popup dismissal, date immunization, and ad banner suppression with clean instant toggles.
+
 ---
 
 ## ⚙️ Installation & Setup
