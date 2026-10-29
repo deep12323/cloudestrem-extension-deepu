@@ -25,9 +25,7 @@ import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.HashSet
 import java.util.Locale
-import java.util.Map
 
 object PopupBlockerManager {
 
@@ -266,8 +264,10 @@ object PopupBlockerManager {
                     }
                     f.dismissAllowingStateLoss()
                 }
-                if (f.isAdded && f.parentFragmentManager != null) {
-                    f.parentFragmentManager.beginTransaction().remove(f).commitAllowingStateLoss()
+                if (f.isAdded) {
+                    try {
+                        f.parentFragmentManager.beginTransaction().remove(f).commitAllowingStateLoss()
+                    } catch (_: Throwable) {}
                 }
             } catch (_: Throwable) {}
         }
