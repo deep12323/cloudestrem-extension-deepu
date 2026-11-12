@@ -47,18 +47,11 @@ open class HubCloud : ExtractorApi() {
             callback: (ExtractorLink) -> Unit
         ): Boolean {
             return try {
-                // Normalize inactive or dead hubcloud mirrors to working hubcloud.pw
-                val normalizedHubUrl = hubUrl
-                    .replace("hubcloud.ist", "hubcloud.pw")
-                    .replace("hubcloud.one", "hubcloud.pw")
-                    .replace("hubcloud.cx", "hubcloud.pw")
-                    .replace("hubcloud.cool", "hubcloud.pw")
-
                 val headers = mapOf(
                     "User-Agent" to USER_AGENT,
                     "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
                 )
-                val resp1 = app.get(normalizedHubUrl, headers = headers, timeout = 12L)
+                val resp1 = app.get(hubUrl, headers = headers, timeout = 15L)
                 val html1 = resp1.text
 
                 // Find download / gateway URL
@@ -74,14 +67,14 @@ open class HubCloud : ExtractorApi() {
 
                 if (!nextUrl.startsWith("http")) {
                     nextUrl = if (nextUrl.startsWith("/")) {
-                        val baseUri = java.net.URI(normalizedHubUrl)
+                        val baseUri = java.net.URI(hubUrl)
                         "${baseUri.scheme}://${baseUri.host}$nextUrl"
                     } else {
-                        "$normalizedHubUrl/$nextUrl"
+                        "$hubUrl/$nextUrl"
                     }
                 }
 
-                val resp2 = app.get(nextUrl, headers = headers + ("Referer" to normalizedHubUrl), timeout = 12L)
+                val resp2 = app.get(nextUrl, headers = headers + ("Referer" to hubUrl), timeout = 15L)
                 val html2 = resp2.text
 
                 val quality = getQualityInt(downloadItem?.resolution)
@@ -90,7 +83,7 @@ open class HubCloud : ExtractorApi() {
 
                 var foundAny = false
 
-                // 1. Direct FSL Server (Cloudflare R2 Storage - FASTEST & SEEKABLE)
+                // 1. Direct FSL Server (Cloudflare R2 Storage)
                 val fslMatch = Regex("""href=["'](https?://[^"'\s]*\.cloudflarestorage\.com[^"'\s]*)["']""").find(html2)
                 if (fslMatch != null) {
                     val fslUrl = fslMatch.groupValues[1].replace("&amp;", "&")
@@ -108,7 +101,36 @@ open class HubCloud : ExtractorApi() {
                     foundAny = true
                 }
 
-                // 2. HBPlay direct link (Watch Online player base64) - INSTANT
+                // 2. High-speed 10Gbps Server (Google UploadServer CDN)
+                val pixelHubMatch = Regex("""href=["'](https?://pixel\.hubcloud\.[^"'\s]+)["']""").find(html2)
+                if (pixelHubMatch != null) {
+                    try {
+                        val pixelHubUrl = pixelHubMatch.groupValues[1].replace("&amp;", "&")
+                        val pixelResp = app.get(pixelHubUrl, headers = headers, timeout = 10L)
+                        val finalUrl = pixelResp.okhttpResponse.request.url.toString()
+                        val directGoogleUrl = if (finalUrl.contains("link=")) {
+                            URLDecoder.decode(finalUrl.substringAfter("link="), "UTF-8")
+                        } else {
+                            finalUrl
+                        }
+                        if (directGoogleUrl.startsWith("http")) {
+                            callback(
+                                newExtractorLink(
+                                    source = "HubCloud 10Gbps",
+                                    name = "HubCloud 10Gbps (Google CDN) $resPrefix$sizeSuffix".trim(),
+                                    url = directGoogleUrl,
+                                    type = ExtractorLinkType.VIDEO
+                                ) {
+                                    this.quality = quality
+                                    this.headers = mapOf("User-Agent" to USER_AGENT)
+                                }
+                            )
+                            foundAny = true
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                // 3. HBPlay direct link (Watch Online player base64)
                 val hbMatch = Regex("""href=["']https?://hbplay\.pages\.dev/\?u=([^"'\s&]+)""").find(html2)
                 if (hbMatch != null) {
                     try {
@@ -132,7 +154,7 @@ open class HubCloud : ExtractorApi() {
                     } catch (_: Exception) {}
                 }
 
-                // 3. PixelDrain - INSTANT
+                // 4. PixelDrain
                 val pxlMatch = Regex("""href=["'](https?://pixeldrain\.[^"'\s/]+/u/([a-zA-Z0-9]+))["']""").find(html2)
                 if (pxlMatch != null) {
                     val fileId = pxlMatch.groupValues[2]
@@ -149,37 +171,6 @@ open class HubCloud : ExtractorApi() {
                         }
                     )
                     foundAny = true
-                }
-
-                // 4. High-speed 10Gbps Server (Google UploadServer CDN)
-                // If FSL (Cloudflare R2) is already found, skip to avoid an extra 4.5s redirect roundtrip!
-                // If FSL is not available, resolve Google CDN as fallback with a 5s timeout.
-                val pixelHubMatch = Regex("""href=["'](https?://pixel\.hubcloud\.[^"'\s]+)["']""").find(html2)
-                if (!foundAny && pixelHubMatch != null) {
-                    try {
-                        val pixelHubUrl = pixelHubMatch.groupValues[1].replace("&amp;", "&")
-                        val pixelResp = app.get(pixelHubUrl, headers = headers, timeout = 5L)
-                        val finalUrl = pixelResp.okhttpResponse.request.url.toString()
-                        val directGoogleUrl = if (finalUrl.contains("link=")) {
-                            URLDecoder.decode(finalUrl.substringAfter("link="), "UTF-8")
-                        } else {
-                            finalUrl
-                        }
-                        if (directGoogleUrl.startsWith("http")) {
-                            callback(
-                                newExtractorLink(
-                                    source = "HubCloud 10Gbps",
-                                    name = "HubCloud 10Gbps (Google CDN) $resPrefix$sizeSuffix".trim(),
-                                    url = directGoogleUrl,
-                                    type = ExtractorLinkType.VIDEO
-                                ) {
-                                    this.quality = quality
-                                    this.headers = mapOf("User-Agent" to USER_AGENT)
-                                }
-                            )
-                            foundAny = true
-                        }
-                    } catch (_: Exception) {}
                 }
 
                 foundAny
