@@ -9,6 +9,7 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLEncoder
 
 class H2RxDMoviesProvider : MainAPI() {
@@ -51,7 +52,7 @@ class H2RxDMoviesProvider : MainAPI() {
     private fun MediaItem.toSearchResponse(): SearchResponse? {
         val title = this.title ?: return null
         val isSeries = this.type.equals("series", ignoreCase = true)
-        val itemUrl = "$mainUrl/media/${this.id}"
+        val itemUrl = if (isSeries) "$mainUrl/series/${this.id}" else "$mainUrl/movie/${this.id}"
 
         return if (isSeries) {
             newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries) {
@@ -106,26 +107,53 @@ class H2RxDMoviesProvider : MainAPI() {
 
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
-    override suspend fun load(url: String): LoadResponse? {
-        val id = url.substringAfterLast("/").trim().toIntOrNull() ?: return null
+    override suspend fun load(url: String): LoadResponse? = coroutineScope {
+        val id = url.substringAfterLast("/").trim().toIntOrNull() ?: return@coroutineScope null
         val detailUrl = "$apiUrl/api/v1/media/$id"
+        val isKnownSeries = url.contains("/series/")
+        val isKnownMovie = url.contains("/movie/")
 
         try {
+            // Safe parallel download fetch
+            val seriesDlDeferred = if (isKnownSeries) {
+                async {
+                    try {
+                        app.get("$apiUrl/api/v1/series/$id/downloads", headers = requestHeaders, timeout = 15L)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+            } else null
+
+            val movieDlDeferred = if (isKnownMovie) {
+                async {
+                    try {
+                        app.get("$apiUrl/api/v1/movies/$id/downloads", headers = requestHeaders, timeout = 15L)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+            } else null
+
             val detailResp = app.get(detailUrl, headers = requestHeaders, timeout = 15L)
-            if (!detailResp.isSuccessful) return null
+            if (!detailResp.isSuccessful) return@coroutineScope null
 
             val mediaDetail: MediaDetailResponse = mapper.readValue(detailResp.text)
-            val media = mediaDetail.data ?: return null
+            val media = mediaDetail.data ?: return@coroutineScope null
 
             val title = media.title ?: "Unknown"
             val isSeries = media.type.equals("series", ignoreCase = true)
             val type = if (isSeries) TvType.TvSeries else TvType.Movie
 
             if (isSeries) {
-                val dlResp = app.get("$apiUrl/api/v1/series/$id/downloads", headers = requestHeaders, timeout = 15L)
+                val dlResp = seriesDlDeferred?.await() ?: try {
+                    app.get("$apiUrl/api/v1/series/$id/downloads", headers = requestHeaders, timeout = 15L)
+                } catch (e: Exception) {
+                    null
+                }
                 val episodesList = mutableListOf<Episode>()
 
-                if (dlResp.isSuccessful) {
+                if (dlResp != null && dlResp.isSuccessful) {
                     val seriesData: SeriesDownloadsResponse = mapper.readValue(dlResp.text)
                     for (season in seriesData.seasons) {
                         val seasonNum = season.season
@@ -144,12 +172,14 @@ class H2RxDMoviesProvider : MainAPI() {
                             )
                         }
 
-                        // Season packs / batch zips (placed in Specials / Season 0)
+                        // Season packs / batch zips
                         for ((index, pack) in season.packs.withIndex()) {
                             val cleanName = pack.file_name ?: "Season Pack"
                             val sizeStr = if (!pack.size.isNullOrBlank()) " • ${pack.size}" else ""
                             val resStr = if (!pack.resolution.isNullOrBlank()) " • ${pack.resolution}" else ""
                             val packPayload = mapper.writeValueAsString(listOf(pack))
+                            
+                            // Put in Season 0 (Specials)
                             episodesList.add(
                                 newEpisode(packPayload) {
                                     this.name = "📦 [ZIP PACK] $cleanName$resStr$sizeStr"
@@ -158,11 +188,22 @@ class H2RxDMoviesProvider : MainAPI() {
                                     this.posterUrl = media.poster
                                 }
                             )
+                            // Also make accessible directly under the respective season if seasonNum > 0
+                            if (seasonNum > 0) {
+                                episodesList.add(
+                                    newEpisode(packPayload) {
+                                        this.name = "📦 [SEASON $seasonNum PACK] $cleanName$resStr$sizeStr"
+                                        this.season = seasonNum
+                                        this.episode = season.episodes.size + index + 1
+                                        this.posterUrl = media.poster
+                                    }
+                                )
+                            }
                         }
                     }
                 }
 
-                return newTvSeriesLoadResponse(title, url, type, episodesList) {
+                return@coroutineScope newTvSeriesLoadResponse(title, url, type, episodesList) {
                     this.posterUrl = media.poster
                     this.backgroundPosterUrl = media.backdrop
                     this.year = media.release_year
@@ -172,8 +213,12 @@ class H2RxDMoviesProvider : MainAPI() {
                     this.score = Score.from10(media.rating_num)
                 }
             } else {
-                val dlResp = app.get("$apiUrl/api/v1/movies/$id/downloads", headers = requestHeaders, timeout = 15L)
-                val downloads = if (dlResp.isSuccessful) {
+                val dlResp = movieDlDeferred?.await() ?: try {
+                    app.get("$apiUrl/api/v1/movies/$id/downloads", headers = requestHeaders, timeout = 15L)
+                } catch (e: Exception) {
+                    null
+                }
+                val downloads = if (dlResp != null && dlResp.isSuccessful) {
                     val dlData: MovieDownloadsResponse = mapper.readValue(dlResp.text)
                     dlData.downloads
                 } else {
@@ -182,7 +227,7 @@ class H2RxDMoviesProvider : MainAPI() {
 
                 val moviePayload = mapper.writeValueAsString(downloads)
 
-                return newMovieLoadResponse(title, url, type, moviePayload) {
+                return@coroutineScope newMovieLoadResponse(title, url, type, moviePayload) {
                     this.posterUrl = media.poster
                     this.backgroundPosterUrl = media.backdrop
                     this.year = media.release_year
@@ -194,7 +239,7 @@ class H2RxDMoviesProvider : MainAPI() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            return null
+            return@coroutineScope null
         }
     }
 
@@ -204,28 +249,57 @@ class H2RxDMoviesProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val downloads: List<DownloadItem> = try {
+        val rawDownloads: List<DownloadItem> = try {
             mapper.readValue(data)
         } catch (e: Exception) {
             return false
         }
 
-        if (downloads.isEmpty()) return false
+        if (rawDownloads.isEmpty()) return false
+
+        // Deduplicate downloads by link URL to avoid redundant network calls
+        val downloads = rawDownloads.distinctBy { it.hubcloud_url ?: it.download_url }
 
         coroutineScope {
             downloads.map { download ->
                 async {
-                    val hubUrl = download.hubcloud_url
-                    if (!hubUrl.isNullOrBlank() && (hubUrl.contains("hubcloud") || hubUrl.contains("hubc"))) {
-                        HubCloud.resolveHubCloud(hubUrl, download, callback)
-                    } else {
-                        val dlUrl = download.download_url
-                        if (!dlUrl.isNullOrBlank()) {
-                            if (dlUrl.contains("hubcloud") || dlUrl.contains("hubc")) {
-                                HubCloud.resolveHubCloud(dlUrl, download, callback)
-                            } else {
-                                loadExtractor(dlUrl, subtitleCallback, callback)
+                    withTimeoutOrNull(25_000L) {
+                        try {
+                            var hubUrl = download.hubcloud_url
+
+                            // If hubcloud_url is missing, attempt to resolve via the API stream resolver
+                            if (hubUrl.isNullOrBlank() && !download.download_url.isNullOrBlank()) {
+                                val dlUrl = download.download_url
+                                if (dlUrl.contains("hubcloud") || dlUrl.contains("hubc")) {
+                                    hubUrl = dlUrl
+                                } else if (dlUrl.contains("link.xdmovies")) {
+                                    try {
+                                        val resolveUrl = "$apiUrl/api/v1/resolve?url=${URLEncoder.encode(dlUrl, "UTF-8")}"
+                                        val resolveResp = app.get(resolveUrl, headers = requestHeaders, timeout = 7L)
+                                        if (resolveResp.isSuccessful) {
+                                            val node = mapper.readTree(resolveResp.text)
+                                            if (node.get("success")?.asBoolean() == true && node.get("resolved")?.asBoolean() == true) {
+                                                hubUrl = node.get("hubcloud_url")?.asText()
+                                            }
+                                        }
+                                    } catch (_: Exception) {}
+                                }
                             }
+
+                            if (!hubUrl.isNullOrBlank() && (hubUrl.contains("hubcloud") || hubUrl.contains("hubc"))) {
+                                HubCloud.resolveHubCloud(hubUrl, download, callback)
+                            } else {
+                                val dlUrl = download.download_url
+                                if (!dlUrl.isNullOrBlank()) {
+                                    if (dlUrl.contains("hubcloud") || dlUrl.contains("hubc")) {
+                                        HubCloud.resolveHubCloud(dlUrl, download, callback)
+                                    } else if (!dlUrl.contains("link.xdmovies") && !dlUrl.contains("latestnewsonline")) {
+                                        loadExtractor(dlUrl, subtitleCallback, callback)
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }
                 }
