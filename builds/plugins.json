@@ -108,7 +108,7 @@
   {
     "name": "H2RxDMovies",
     "internalName": "H2RxDMovies",
-    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/H2RxDMovies.cs3?v=1",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/H2RxDMovies.cs3?v=2",
     "tvTypes": [
       "Movie",
       "TvSeries"
@@ -116,7 +116,7 @@
     "language": "en",
     "iconUrl": "https://h2r-xdmovies.pages.dev/favicon.svg",
     "apiVersion": 10,
-    "version": 1,
+    "version": 2,
     "authors": [
       "deepu2135"
     ],
