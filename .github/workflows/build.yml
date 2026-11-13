@@ -36,7 +36,7 @@ jobs:
             "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=20"
+              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=21"
             ]
           }' > builds/repo.json
 
@@ -122,12 +122,12 @@ jobs:
             {
               "name": "H2RxDMovies",
               "internalName": "H2RxDMovies",
-              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/H2RxDMovies.cs3?v=2",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/H2RxDMovies.cs3?v=3",
               "tvTypes": ["Movie", "TvSeries"],
               "language": "en",
               "iconUrl": "https://h2r-xdmovies.pages.dev/favicon.svg",
               "apiVersion": 10,
-              "version": 2,
+              "version": 3,
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Stream movies & TV series from H2RxDMovies (HubCloud direct R2 & Google CDN streams)"
