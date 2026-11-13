@@ -2,15 +2,15 @@
   {
     "name": "Telegram",
     "internalName": "TelegramProvider",
-    "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/TelegramProvider.cs3?v=2",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/TelegramProvider.cs3?v=17",
     "tvTypes": [
       "Movie",
       "TvSeries"
     ],
     "language": "en",
-    "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/icon.png",
+    "iconUrl": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/master/icon.png",
     "apiVersion": 10,
-    "version": 145,
+    "version": 167,
     "authors": [
       "deepu2135"
     ],
@@ -20,15 +20,15 @@
   {
     "name": "Google Drive",
     "internalName": "GoogleDriveProvider",
-    "url": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/builds/GoogleDriveProvider.cs3?v=2",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/GoogleDriveProvider.cs3?v=17",
     "tvTypes": [
       "Movie",
       "TvSeries"
     ],
     "language": "en",
-    "iconUrl": "https://raw.githubusercontent.com/deepu2135/cloudestrem-extension-deepu/master/google_drive_icon.png",
+    "iconUrl": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/master/google_drive_icon.png",
     "apiVersion": 10,
-    "version": 11,
+    "version": 12,
     "authors": [
       "deepu2135"
     ],
@@ -69,7 +69,7 @@
       "deepu2135"
     ],
     "status": 1,
-    "description": "External player integrations: MPV Infinity (Mpv\u221e) and 1DM Video Downloader & Player in Preferred video player"
+    "description": "External player integrations: MPV Infinity (Mpv∞) and 1DM Video Downloader & Player in Preferred video player"
   },
   {
     "name": "Skip Torrent Warning",
