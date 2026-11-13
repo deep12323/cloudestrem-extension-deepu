@@ -16,6 +16,7 @@ class H2RxDMoviesProvider : MainAPI() {
     override var name = "H2RxDMovies"
     override val hasMainPage = true
     override val hasQuickSearch = true
+    override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     private val apiUrl = "https://xd-api.hdmovielover.workers.dev"
@@ -24,23 +25,31 @@ class H2RxDMoviesProvider : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "$apiUrl/api/v1/catalog?sort=lastmod" to "Latest Releases",
+        "$apiUrl/api/v1/catalog?sort=lastmod" to "Home",
+        "$apiUrl/api/v1/catalog?sort=downloads" to "Featured",
         "$apiUrl/api/v1/movies?sort=lastmod" to "Latest Movies",
         "$apiUrl/api/v1/series?sort=lastmod" to "Latest TV Series",
-        "$apiUrl/api/v1/catalog?sort=downloads" to "Most Popular / Trending",
         "$apiUrl/api/v1/movies?sort=rating" to "Top Rated Movies",
         "$apiUrl/api/v1/series?sort=rating" to "Top Rated TV Series",
-        "$apiUrl/api/v1/movies?audio=Hindi" to "Hindi Movies",
-        "$apiUrl/api/v1/movies?audio=Tamil" to "Tamil Movies",
-        "$apiUrl/api/v1/movies?audio=Telugu" to "Telugu Movies",
-        "$apiUrl/api/v1/movies?audio=Malayalam" to "Malayalam Movies",
+        "$apiUrl/api/v1/catalog?source=Netflix" to "Netflix",
+        "$apiUrl/api/v1/catalog?source=Amazon" to "Amazon Prime",
+        "$apiUrl/api/v1/catalog?source=JioHotstar" to "JioHotstar",
+        "$apiUrl/api/v1/catalog?source=Zee5" to "Zee5",
+        "$apiUrl/api/v1/catalog?source=SonyLiv" to "SonyLIV",
+        "$apiUrl/api/v1/catalog?source=AppleTVPlus" to "Apple TV+",
+        "$apiUrl/api/v1/catalog?audio=Hindi" to "Hindi",
+        "$apiUrl/api/v1/catalog?audio=Tamil" to "Tamil",
+        "$apiUrl/api/v1/catalog?audio=Telugu" to "Telugu",
+        "$apiUrl/api/v1/catalog?audio=Malayalam" to "Malayalam",
+        "$apiUrl/api/v1/catalog?audio=English" to "English",
+        "$apiUrl/api/v1/catalog?audio=Korean" to "Korean (K-Drama)",
         "$apiUrl/api/v1/catalog?genre=Action" to "Action",
         "$apiUrl/api/v1/catalog?genre=Thriller" to "Thriller & Crime",
         "$apiUrl/api/v1/catalog?genre=Comedy" to "Comedy",
-        "$apiUrl/api/v1/catalog?source=Netflix" to "Netflix Releases",
-        "$apiUrl/api/v1/catalog?source=Amazon" to "Prime Video Releases",
-        "$apiUrl/api/v1/catalog?source=JioHotstar" to "JioHotstar Releases",
-        "$apiUrl/api/v1/catalog?source=Zee5" to "Zee5 Releases"
+        "$apiUrl/api/v1/catalog?genre=Romance" to "Romance",
+        "$apiUrl/api/v1/catalog?genre=Horror" to "Horror",
+        "$apiUrl/api/v1/catalog?genre=Science+Fiction" to "Sci-Fi & Fantasy",
+        "$apiUrl/api/v1/catalog?genre=Animation" to "Animation"
     )
 
     private val requestHeaders = mapOf(
@@ -48,19 +57,24 @@ class H2RxDMoviesProvider : MainAPI() {
         "Accept" to "application/json"
     )
 
-    private fun MediaItem.toSearchResponse(): SearchResponse? {
+    private fun MediaItem.toSearchResponse(preferBackdrop: Boolean = false): SearchResponse? {
         val title = this.title ?: return null
         val isSeries = this.type.equals("series", ignoreCase = true)
         val itemUrl = "$mainUrl/media/${this.id}"
+        val imgUrl = if (preferBackdrop) {
+            this.backdrop?.takeIf { it.isNotBlank() } ?: this.poster
+        } else {
+            this.poster?.takeIf { it.isNotBlank() } ?: this.backdrop
+        }
 
         return if (isSeries) {
             newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries) {
-                this.posterUrl = this@toSearchResponse.poster
+                this.posterUrl = imgUrl
                 this.year = this@toSearchResponse.release_year
             }
         } else {
             newMovieSearchResponse(title, itemUrl, TvType.Movie) {
-                this.posterUrl = this@toSearchResponse.poster
+                this.posterUrl = imgUrl
                 this.year = this@toSearchResponse.release_year
             }
         }
@@ -78,30 +92,44 @@ class H2RxDMoviesProvider : MainAPI() {
             if (!response.isSuccessful) return null
 
             val catalog: CatalogResponse = mapper.readValue(response.text)
-            val items = catalog.results.mapNotNull { it.toSearchResponse() }
+            val items = catalog.results.mapNotNull { it.toSearchResponse(preferBackdrop = true) }
             val hasNext = catalog.page < catalog.totalPages
 
-            return newHomePageResponse(HomePageList(request.name, items), hasNext)
+            return newHomePageResponse(
+                list = HomePageList(
+                    name = request.name,
+                    list = items,
+                    isHorizontalImages = true
+                ),
+                hasNext = hasNext
+            )
         } catch (e: Exception) {
             e.printStackTrace()
             return null
         }
     }
 
-    override suspend fun search(query: String): List<SearchResponse>? {
+    override suspend fun search(query: String, page: Int): SearchResponseList? {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val searchUrl = "$apiUrl/api/v1/search?q=$encodedQuery&limit=30"
+        val searchUrl = "$apiUrl/api/v1/search?q=$encodedQuery&page=$page&limit=25"
 
         try {
             val response = app.get(searchUrl, headers = requestHeaders, timeout = 15L)
-            if (!response.isSuccessful) return emptyList()
+            if (!response.isSuccessful) return newSearchResponseList(emptyList(), false)
 
             val catalog: CatalogResponse = mapper.readValue(response.text)
-            return catalog.results.mapNotNull { it.toSearchResponse() }
+            val items = catalog.results.mapNotNull { it.toSearchResponse(preferBackdrop = false) }
+            val hasNext = catalog.page < catalog.totalPages
+
+            return newSearchResponseList(items, hasNext)
         } catch (e: Exception) {
             e.printStackTrace()
-            return emptyList()
+            return newSearchResponseList(emptyList(), false)
         }
+    }
+
+    override suspend fun search(query: String): List<SearchResponse>? {
+        return search(query, 1)?.items
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)

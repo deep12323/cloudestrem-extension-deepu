@@ -1,6 +1,6 @@
 import java.io.File
 
-version = 2
+version = 3
 
 cloudstream {
     description = "Stream movies & TV series from H2RxDMovies (HubCloud direct R2 & Google CDN streams)"
