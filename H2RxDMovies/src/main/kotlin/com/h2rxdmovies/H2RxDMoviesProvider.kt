@@ -57,15 +57,11 @@ class H2RxDMoviesProvider : MainAPI() {
         "Accept" to "application/json"
     )
 
-    private fun MediaItem.toSearchResponse(preferBackdrop: Boolean = false): SearchResponse? {
+    private fun MediaItem.toSearchResponse(): SearchResponse? {
         val title = this.title ?: return null
         val isSeries = this.type.equals("series", ignoreCase = true)
         val itemUrl = "$mainUrl/media/${this.id}"
-        val imgUrl = if (preferBackdrop) {
-            this.backdrop?.takeIf { it.isNotBlank() } ?: this.poster
-        } else {
-            this.poster?.takeIf { it.isNotBlank() } ?: this.backdrop
-        }
+        val imgUrl = this.poster?.takeIf { it.isNotBlank() } ?: this.backdrop
 
         return if (isSeries) {
             newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries) {
@@ -92,14 +88,14 @@ class H2RxDMoviesProvider : MainAPI() {
             if (!response.isSuccessful) return null
 
             val catalog: CatalogResponse = mapper.readValue(response.text)
-            val items = catalog.results.mapNotNull { it.toSearchResponse(preferBackdrop = true) }
+            val items = catalog.results.mapNotNull { it.toSearchResponse() }
             val hasNext = catalog.page < catalog.totalPages
 
             return newHomePageResponse(
                 list = HomePageList(
                     name = request.name,
                     list = items,
-                    isHorizontalImages = true
+                    isHorizontalImages = false
                 ),
                 hasNext = hasNext
             )
@@ -118,7 +114,7 @@ class H2RxDMoviesProvider : MainAPI() {
             if (!response.isSuccessful) return newSearchResponseList(emptyList(), false)
 
             val catalog: CatalogResponse = mapper.readValue(response.text)
-            val items = catalog.results.mapNotNull { it.toSearchResponse(preferBackdrop = false) }
+            val items = catalog.results.mapNotNull { it.toSearchResponse() }
             val hasNext = catalog.page < catalog.totalPages
 
             return newSearchResponseList(items, hasNext)
