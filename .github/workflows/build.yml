@@ -24,7 +24,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Providers
-        run: ./gradlew :TelegramProvider:make :GoogleDriveProvider:make :TorrServe:make :ExternalPlayers:make :SkipTorrentWarning:make :PopupBlocker:make :H2RxDMovies:make
+        run: ./gradlew :TelegramProvider:make :GoogleDriveProvider:make :TorrServe:make :ExternalPlayers:make :SkipTorrentWarning:make :PopupBlocker:make :H2RxDMovies:make :AllInOneLiveTV:make :MoviesDrive:make
 
       - name: Generate repo.json and plugins.json
         run: |
@@ -36,7 +36,7 @@ jobs:
             "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=22"
+              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=25"
             ]
           }' > builds/repo.json
 
@@ -131,6 +131,32 @@ jobs:
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Stream movies & TV series from H2RxDMovies (HubCloud direct R2 & Google CDN streams)"
+            },
+            {
+              "name": "Allinone Live TV",
+              "internalName": "AllInOneLiveTV",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/AllInOneLiveTV.cs3?v=1",
+              "tvTypes": ["Live"],
+              "language": "en",
+              "iconUrl": "https://widespread-plum-gffbkraoo7-deis8y3f44.edgeone.dev/channels4_profile.jpg",
+              "apiVersion": 10,
+              "version": 1,
+              "authors": ["deepu2135"],
+              "status": 1,
+              "description": "Live TV & Sports channels from Allinone Live TV (JioTV Plus, SonyLiv, Sports TV, Fancode)"
+            },
+            {
+              "name": "MoviesDrive",
+              "internalName": "MoviesDrive",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/MoviesDrive.cs3?v=3",
+              "tvTypes": ["Movie", "TvSeries"],
+              "language": "en",
+              "iconUrl": "https://new3.moviesdrive.cyou/wp-content/uploads/2026/01/log.png",
+              "apiVersion": 10,
+              "version": 3,
+              "authors": ["deepu2135"],
+              "status": 1,
+              "description": "Stream movies & TV series from MoviesDrive with customizable category catalogue & HubCloud extraction"
             }
           ]' > builds/plugins.json
 
