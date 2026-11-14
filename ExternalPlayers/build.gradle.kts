@@ -1,9 +1,9 @@
 import java.io.File
 
-version = 1
+version = 2
 
 cloudstream {
-    description = "External player integrations: MPV Infinity (Mpv∞) and 1DM Video Downloader & Player"
+    description = "External player integrations: MPV Infinity (Mpv∞), mpvEx, and 1DM Video Downloader & Player"
     authors = listOf("deepu2135")
     status = 1
     tvTypes = listOf("Others")
