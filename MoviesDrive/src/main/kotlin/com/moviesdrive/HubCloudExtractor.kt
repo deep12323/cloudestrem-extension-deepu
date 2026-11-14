@@ -41,6 +41,33 @@ open class MoviesDriveHubCloud : ExtractorApi() {
             }
         }
 
+        fun parseSizeToBytes(sizeStr: String?, fallbackQuality: Int = 0): Long {
+            if (!sizeStr.isNullOrBlank()) {
+                val match = Regex("""([0-9]+(?:\.[0-9]+)?)\s*(TiB|GiB|MiB|KiB|TB|GB|MB|KB|B)\b""", RegexOption.IGNORE_CASE).find(sizeStr)
+                if (match != null) {
+                    val num = match.groupValues[1].toDoubleOrNull() ?: 0.0
+                    val unit = match.groupValues[2].uppercase()
+                    val bytes = when (unit) {
+                        "TB", "TIB" -> (num * 1024L * 1024L * 1024L * 1024L).toLong()
+                        "GB", "GIB" -> (num * 1024L * 1024L * 1024L).toLong()
+                        "MB", "MIB" -> (num * 1024L * 1024L).toLong()
+                        "KB", "KIB" -> (num * 1024L).toLong()
+                        else -> num.toLong()
+                    }
+                    if (bytes > 0L) return bytes
+                }
+            }
+            return when (fallbackQuality) {
+                Qualities.P2160.value -> 8_000_000_000L
+                Qualities.P1440.value -> 4_000_000_000L
+                Qualities.P1080.value -> 2_500_000_000L
+                Qualities.P720.value -> 1_000_000_000L
+                Qualities.P480.value -> 450_000_000L
+                Qualities.P360.value -> 250_000_000L
+                else -> 0L
+            }
+        }
+
         suspend fun resolveHubCloud(
             hubUrl: String,
             linkName: String?,
@@ -85,11 +112,20 @@ open class MoviesDriveHubCloud : ExtractorApi() {
                 val resp2 = app.get(nextUrl, headers = headers + ("Referer" to hubUrl), timeout = 10L)
                 val html2 = resp2.text
 
+                // Extract file size from HTML if not provided or to refine
+                val htmlSize = Regex("""(?i)<i[^>]*id=["']size["'][^>]*>([^<]+)</i>""").find(html2)?.groupValues?.get(1)?.trim()
+                    ?: Regex("""(?i)File Size\s*<i[^>]*>([^<]+)</i>""").find(html2)?.groupValues?.get(1)?.trim()
+                val effectiveSize = when {
+                    !sizeStr.isNullOrBlank() -> sizeStr.trim()
+                    !htmlSize.isNullOrBlank() && !htmlSize.equals("NAN", ignoreCase = true) -> htmlSize.trim()
+                    else -> null
+                }
+
                 val quality = getQualityInt(qualityStr ?: linkName)
                 val cleanLabel = linkName?.trim()?.ifBlank { null }
-                val resPrefix = if (!qualityStr.isNullOrBlank()) "$qualityStr " else ""
-                val sizeSuffix = if (!sizeStr.isNullOrBlank()) " [$sizeStr]" else ""
-                val displayTag = cleanLabel ?: "$resPrefix$sizeSuffix".trim()
+                val sizeTag = if (!effectiveSize.isNullOrBlank() && !(cleanLabel?.contains(effectiveSize, ignoreCase = true) ?: false)) " [$effectiveSize]" else ""
+                val resPrefix = if (!qualityStr.isNullOrBlank() && !(cleanLabel?.contains(qualityStr, ignoreCase = true) ?: false)) "$qualityStr " else ""
+                val displayTag = cleanLabel ?: "$resPrefix$sizeTag".trim()
 
                 var foundAny = false
                 val seenUrls = mutableSetOf<String>()
@@ -100,7 +136,7 @@ open class MoviesDriveHubCloud : ExtractorApi() {
                     val fslUrl = match.groupValues[1].replace("&amp;", "&")
                     if (seenUrls.add(fslUrl)) {
                         val serverTag = if (index == 0) "HubCloud FSL" else "HubCloud FSL ${index + 1}"
-                        val linkTitle = if (cleanLabel != null) "$serverTag • $cleanLabel" else "$serverTag (Direct R2) $displayTag"
+                        val linkTitle = if (cleanLabel != null) "$serverTag • $cleanLabel$sizeTag" else "$serverTag $displayTag"
                         callback(
                             newExtractorLink(
                                 source = serverTag,
@@ -131,7 +167,7 @@ open class MoviesDriveHubCloud : ExtractorApi() {
                             finalUrl
                         }
                         if (directGoogleUrl.startsWith("http") && seenUrls.add(directGoogleUrl)) {
-                            val linkTitle = if (cleanLabel != null) "HubCloud 10Gbps • $cleanLabel" else "HubCloud 10Gbps (Google CDN) $displayTag"
+                            val linkTitle = if (cleanLabel != null) "HubCloud 10Gbps • $cleanLabel$sizeTag" else "HubCloud 10Gbps $displayTag"
                             callback(
                                 newExtractorLink(
                                     source = "HubCloud 10Gbps",
@@ -154,7 +190,7 @@ open class MoviesDriveHubCloud : ExtractorApi() {
                     try {
                         val decoded = String(android.util.Base64.decode(hbMatch.groupValues[1], android.util.Base64.DEFAULT)).replace("&amp;", "&")
                         if (decoded.startsWith("http") && seenUrls.add(decoded)) {
-                            val linkTitle = if (cleanLabel != null) "HubCloud Fast • $cleanLabel" else "HubCloud Fast $displayTag"
+                            val linkTitle = if (cleanLabel != null) "HubCloud Fast • $cleanLabel$sizeTag" else "HubCloud Fast $displayTag"
                             callback(
                                 newExtractorLink(
                                     source = "HubCloud Stream",
@@ -177,7 +213,7 @@ open class MoviesDriveHubCloud : ExtractorApi() {
                     val fileId = pxlMatch.groupValues[2]
                     val directPxl = "https://pixeldrain.com/api/file/$fileId"
                     if (seenUrls.add(directPxl)) {
-                        val linkTitle = if (cleanLabel != null) "PixelDrain • $cleanLabel" else "PixelDrain $displayTag"
+                        val linkTitle = if (cleanLabel != null) "PixelDrain • $cleanLabel$sizeTag" else "PixelDrain $displayTag"
                         callback(
                             newExtractorLink(
                                 source = "PixelDrain",

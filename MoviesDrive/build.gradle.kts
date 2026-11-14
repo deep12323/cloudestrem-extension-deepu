@@ -5,7 +5,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
 }
 
-version = 3
+version = 4
 
 cloudstream {
     description = "Stream movies & TV series from MoviesDrive (HubCloud direct R2 & Google CDN streams)"

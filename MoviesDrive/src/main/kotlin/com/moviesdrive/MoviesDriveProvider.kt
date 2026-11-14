@@ -14,6 +14,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
+import java.util.Collections
 
 class MoviesDriveProvider(private val pluginContext: Context? = null) : MainAPI() {
     override var mainUrl = "https://new3.moviesdrive.cyou"
@@ -416,9 +417,16 @@ class MoviesDriveProvider(private val pluginContext: Context? = null) : MainAPI(
                                 }
 
                                 seasonEpDownloadsMap.toSortedMap().forEach { (epNum, linkList) ->
-                                    val distinctQualities = seasonEpQualitiesMap[epNum]?.toList() ?: emptyList()
+                                    val sortedLinkList = linkList.sortedWith(
+                                        compareByDescending<MovieDownloadLink> {
+                                            MoviesDriveHubCloud.parseSizeToBytes(it.size ?: it.name, MoviesDriveHubCloud.getQualityInt(it.quality ?: it.name))
+                                        }.thenByDescending {
+                                            MoviesDriveHubCloud.getQualityInt(it.quality ?: it.name)
+                                        }
+                                    )
+                                    val distinctQualities = sortedLinkList.mapNotNull { it.quality }.distinct()
                                     val qSummary = if (distinctQualities.isNotEmpty()) " (${distinctQualities.joinToString(", ")})" else ""
-                                    val epPayload = mapper.writeValueAsString(linkList)
+                                    val epPayload = mapper.writeValueAsString(sortedLinkList)
 
                                     synchronized(episodesList) {
                                         episodesList.add(
@@ -438,7 +446,13 @@ class MoviesDriveProvider(private val pluginContext: Context? = null) : MainAPI(
 
                 // If no single episode archives existed (e.g. mini-series with direct links), add direct downloads as episodes
                 if (episodesList.isEmpty()) {
-                    val directDownloads = scrapedDownloads.filter { !it.isZip }
+                    val directDownloads = scrapedDownloads.filter { !it.isZip }.sortedWith(
+                        compareByDescending<ScrapedDownload> {
+                            MoviesDriveHubCloud.parseSizeToBytes(it.size ?: it.text, MoviesDriveHubCloud.getQualityInt(it.quality ?: it.text))
+                        }.thenByDescending {
+                            MoviesDriveHubCloud.getQualityInt(it.quality ?: it.text)
+                        }
+                    )
                     for ((idx, dl) in directDownloads.withIndex()) {
                         val payload = mapper.writeValueAsString(
                             listOf(MovieDownloadLink(name = dl.text, url = dl.url, quality = dl.quality, size = dl.size))
@@ -455,7 +469,11 @@ class MoviesDriveProvider(private val pluginContext: Context? = null) : MainAPI(
                 }
 
                 // Add Zip packs in Season 0 / Specials
-                val zipPacks = scrapedDownloads.filter { it.isZip }
+                val zipPacks = scrapedDownloads.filter { it.isZip }.sortedWith(
+                    compareByDescending<ScrapedDownload> {
+                        MoviesDriveHubCloud.parseSizeToBytes(it.size ?: it.text, MoviesDriveHubCloud.getQualityInt(it.quality ?: it.text))
+                    }
+                )
                 for ((idx, pack) in zipPacks.withIndex()) {
                     val packPayload = mapper.writeValueAsString(
                         listOf(MovieDownloadLink(name = pack.text, url = pack.url, quality = pack.quality, size = pack.size))
@@ -483,10 +501,16 @@ class MoviesDriveProvider(private val pluginContext: Context? = null) : MainAPI(
                     if (scoreVal != null) this.score = Score.from10(scoreVal)
                 }
             } else {
-                // Movie: Gather all download items
+                // Movie: Gather all download items sorted by decreasing file size
                 val downloadItems = scrapedDownloads.filter { !it.isZip }.map {
                     MovieDownloadLink(name = it.text, url = it.url, quality = it.quality, size = it.size)
-                }
+                }.sortedWith(
+                    compareByDescending<MovieDownloadLink> {
+                        MoviesDriveHubCloud.parseSizeToBytes(it.size ?: it.name, MoviesDriveHubCloud.getQualityInt(it.quality ?: it.name))
+                    }.thenByDescending {
+                        MoviesDriveHubCloud.getQualityInt(it.quality ?: it.name)
+                    }
+                )
                 val moviePayload = mapper.writeValueAsString(downloadItems)
 
                 return newMovieLoadResponse(title, url, type, moviePayload) {
@@ -518,9 +542,48 @@ class MoviesDriveProvider(private val pluginContext: Context? = null) : MainAPI(
 
         if (downloadItems.isEmpty()) return false
 
+        // Sort download items by decreasing file size
+        val sortedItems = downloadItems.sortedWith(
+            compareByDescending<MovieDownloadLink> {
+                MoviesDriveHubCloud.parseSizeToBytes(it.size ?: it.name, MoviesDriveHubCloud.getQualityInt(it.quality ?: it.name))
+            }.thenByDescending {
+                MoviesDriveHubCloud.getQualityInt(it.quality ?: it.name)
+            }
+        )
+
+        data class ExtLinkWithSize(
+            val link: ExtractorLink,
+            val sizeBytes: Long,
+            val serverPriority: Int
+        )
+
+        val collectedLinks = Collections.synchronizedList(mutableListOf<ExtLinkWithSize>())
+
+        fun getServerPriority(source: String): Int {
+            val s = source.lowercase()
+            return when {
+                s.contains("fsl") -> 4
+                s.contains("10gbps") -> 3
+                s.contains("fast") || s.contains("stream") -> 2
+                s.contains("pixeldrain") -> 1
+                else -> 0
+            }
+        }
+
         coroutineScope {
-            downloadItems.map { item ->
+            sortedItems.map { item ->
                 async {
+                    val itemBytes = MoviesDriveHubCloud.parseSizeToBytes(
+                        item.size ?: item.name,
+                        MoviesDriveHubCloud.getQualityInt(item.quality ?: item.name)
+                    )
+
+                    val itemCollector: (ExtractorLink) -> Unit = { extLink ->
+                        val linkBytes = MoviesDriveHubCloud.parseSizeToBytes(extLink.name, extLink.quality).takeIf { it > 0L } ?: itemBytes
+                        val priority = getServerPriority(extLink.source)
+                        collectedLinks.add(ExtLinkWithSize(extLink, linkBytes, priority))
+                    }
+
                     val itemUrl = item.url
                     if (itemUrl.contains("mdrive.")) {
                         try {
@@ -531,7 +594,7 @@ class MoviesDriveProvider(private val pluginContext: Context? = null) : MainAPI(
                                 for (hubLink in hubLinks) {
                                     val hubUrl = hubLink.attr("href")
                                     if (hubUrl.isNotBlank()) {
-                                        MoviesDriveHubCloud.resolveHubCloud(hubUrl, item.name, item.quality, item.size, callback)
+                                        MoviesDriveHubCloud.resolveHubCloud(hubUrl, item.name, item.quality, item.size, itemCollector)
                                     }
                                 }
                             }
@@ -539,14 +602,27 @@ class MoviesDriveProvider(private val pluginContext: Context? = null) : MainAPI(
                             e.printStackTrace()
                         }
                     } else if (itemUrl.contains("hubcloud") || itemUrl.contains("hubc")) {
-                        MoviesDriveHubCloud.resolveHubCloud(itemUrl, item.name, item.quality, item.size, callback)
+                        MoviesDriveHubCloud.resolveHubCloud(itemUrl, item.name, item.quality, item.size, itemCollector)
                     } else {
-                        loadExtractor(itemUrl, subtitleCallback, callback)
+                        loadExtractor(itemUrl, subtitleCallback, itemCollector)
                     }
                 }
             }.awaitAll()
         }
 
-        return true
+        // Sort all extracted links strictly based on DECREASING file size, then quality, then server priority
+        val sortedLinks = collectedLinks
+            .distinctBy { it.link.url }
+            .sortedWith(
+                compareByDescending<ExtLinkWithSize> { it.sizeBytes }
+                    .thenByDescending { it.link.quality }
+                    .thenByDescending { it.serverPriority }
+            )
+
+        for (item in sortedLinks) {
+            callback(item.link)
+        }
+
+        return sortedLinks.isNotEmpty()
     }
 }
