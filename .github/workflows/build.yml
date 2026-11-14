@@ -36,7 +36,7 @@ jobs:
             "description": "Telegram Extension",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=25"
+              "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=26"
             ]
           }' > builds/repo.json
 
@@ -148,12 +148,12 @@ jobs:
             {
               "name": "MoviesDrive",
               "internalName": "MoviesDrive",
-              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/MoviesDrive.cs3?v=3",
+              "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/MoviesDrive.cs3?v=4",
               "tvTypes": ["Movie", "TvSeries"],
               "language": "en",
               "iconUrl": "https://new3.moviesdrive.cyou/wp-content/uploads/2026/01/log.png",
               "apiVersion": 10,
-              "version": 3,
+              "version": 4,
               "authors": ["deepu2135"],
               "status": 1,
               "description": "Stream movies & TV series from MoviesDrive with customizable category catalogue & HubCloud extraction"
