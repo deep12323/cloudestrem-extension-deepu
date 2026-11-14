@@ -8,8 +8,9 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class ExternalPlayersPlugin : Plugin() {
 
     override fun load(context: Context) {
-        // Register MPV Infinity and 1DM as external players and video click actions
+        // Register MPV Infinity, mpvEx, and 1DM as external players and video click actions
         registerVideoClickAction(MpvInfinityAction())
+        registerVideoClickAction(MpvExAction())
         registerVideoClickAction(OneDmAction())
     }
 }

@@ -88,6 +88,21 @@ flowchart LR
 
 ---
 
+### 6. ExternalPlayers: Added mpvEx Integration (v2)
+* **Feature Request**: Add `https://play.google.com/store/apps/details?id=app.adityanarvekar.mpvex` as external player in ExternalPlayers.
+* **Implementation Details**:
+  1. **Action Class (`MpvExAction`)**: Implemented `VideoClickAction()` with:
+     * Label: `Play in mpvEx`
+     * Package coverage: Both Play Store package (`app.adityanarvekar.mpvex`, `app.adityanarvekar.mpvex.debug`) and GitHub / F-Droid / IzzyOnDroid packages (`app.marlboroadvance.mpvex`, `app.marlboroadvance.mpvex.preview`, `app.marlboroadvance.mpvex.debug`).
+     * Dynamic Activity Resolution: Resolves `PlayerActivity` via `PackageManager.queryIntentActivities` for `Intent.ACTION_VIEW` with fallback to `app.marlboroadvance.mpvex.ui.player.PlayerActivity`.
+     * Full Intent Extras: Passes video URL with `video/*` MIME type, media `title` and `filename`, external subtitle array in `subs` and `subs.enable`, playback position in `position` (integer milliseconds), and formatted HTTP headers with `User-Agent` as leading pair matching mpvEx's header parser.
+     * Progress Tracking: `onResult` captures returned `position` and `duration` extras and updates playback status in CloudStream via `updateDurationAndPosition`.
+  2. **Registration**: Registered `MpvExAction` in `ExternalPlayersPlugin.kt`.
+  3. **Version Bump**: Bumped to **v2** in `ExternalPlayers/build.gradle.kts`, `builds/plugins.json`, and `.github/workflows/build.yml`.
+  4. **Distribution**: Rebuilt `builds/ExternalPlayers.cs3` and mirrored to local storage `/storage/emulated/0/Cloudstream3/plugins/ExternalPlayers.cs3`.
+
+---
+
 ## 📑 Full Catalogue Breakdown in H2RxDMovies (v4)
 
 | Category Name | API Query Endpoint | Card Format |
@@ -127,7 +142,7 @@ flowchart LR
 | **Telegram** | `TelegramProvider` | `167` | On-demand streaming from Telegram chats and forum topics |
 | **Google Drive** | `GoogleDriveProvider` | `12` | Stream media from personal and shared Google Drives |
 | **TorrServe** | `TorrServe` | `6` | BitTorrent engine with 40+ Tier-1 trackers & memory tuner |
-| **External Players** | `ExternalPlayers` | `1` | MPV Infinity & 1DM integrations in video player selector |
+| **External Players** | `ExternalPlayers` | **`2`** | MPV Infinity, mpvEx & 1DM integrations in video player selector |
 | **Skip Torrent Warning**| `SkipTorrentWarning` | `3` | Bypasses torrent confirmation dialog & displays live stats |
 | **Popup Blocker** | `PopupBlocker` | `1` | Suppresses donation popups & modal sponsor dialogs |
 | **H2RxDMovies** | `H2RxDMovies` | **`4`** | 25-row catalogue streaming movies & TV series via HubCloud |
