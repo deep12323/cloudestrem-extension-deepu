@@ -172,10 +172,36 @@ flowchart LR
 | **TorrServe** | `TorrServe` | `6` | BitTorrent engine with 40+ Tier-1 trackers & memory tuner |
 | **External Players** | `ExternalPlayers` | **`2`** | MPV Infinity, mpvEx & 1DM integrations in video player selector |
 | **Skip Torrent Warning**| `SkipTorrentWarning` | `3` | Bypasses torrent confirmation dialog & displays live stats |
-| **Popup Blocker** | `PopupBlocker` | **`2`** | Suppresses donation popups & modal sponsor dialogs (CNCVerse, Raghav, Phisher Repo, etc.) |
+| **Popup Blocker** | `PopupBlocker` | **`3`** | Universal shield blocking donation popups, announcement modals, and dialogs across all extensions (AllForU, CNCVerse, Raghav, Phisher Repo, etc.) |
 | **H2RxDMovies** | `H2RxDMovies` | **`4`** | 25-row catalogue streaming movies & TV series via HubCloud |
 | **Allinone Live TV** | `AllInOneLiveTV` | **`1`** | Live TV & Sports channels (JioTV Plus, SonyLiv, Sports TV, Fancode) |
 | **MoviesDrive** | `MoviesDrive` | **`4`** | Movies & TV series with HubCloud extraction sorted by decreasing file size |
+
+---
+
+## 8. 🛡️ PopupBlocker Universal Shield Architecture (v3)
+
+### Why AllForU & Direct Dialogs Bypassed Standard Blockers
+- **AllForU Repo (`RVRBEAST76/allforu-repo`)**: Bundled inside 40+ plugins (MovieBox, Rate, NoirX, AllOtt, JioTV, M3UPlayer, etc.) via `com.allforu.Announcer`.
+- **Direct Native `AlertDialog`**: AllForU does NOT use AndroidX `DialogFragment` and does NOT store timestamps in `SharedPreferences`. It calls `new AlertDialog.Builder(activity).setView(card).create().show()` directly on `showOnHome()`.
+- **Standard Fragment Blockers Blind Spot**: `FragmentManager.FragmentLifecycleCallbacks` only intercepts `androidx.fragment.app.Fragment` instances; it never sees native `android.app.AlertDialog` windows.
+
+### 5-Layer Defense Architecture in v3
+1. **`WindowManagerGlobal` Hook (`ShieldViewsList`)**:
+   - Replaces `WindowManagerGlobal.mViews` with `ShieldViewsList`.
+   - The instant ANY window is added to the system (`mViews.add(view)`), it is checked synchronously. If it contains `AnnouncerCard` or ad/donation keywords, its visibility is set to `View.GONE` and alpha to `0f` immediately—preventing any visual flicker.
+2. **Activity Window Callback Delegation (`ShieldWindowCallback`)**:
+   - Wraps `activity.window.callback`. When an `AlertDialog` gains focus (causing the activity window to lose focus), `onWindowFocusChanged(false)` triggers an instant sweep and dismissal.
+3. **`ViewTreeObserver.OnGlobalLayoutListener`**:
+   - Monitors decor view changes in real time and dismisses pending dialogs immediately.
+4. **Target Class Neutralization (`com.allforu.Announcer`)**:
+   - Sets static field `appCtx = null` -> `Announcer.showOnHome()` aborts instantly before posting runnables.
+   - If `current` dialog is instantiated, calls `current.dismiss()` and clears the reference.
+   - Cancels and nulls `anim` (`ValueAnimator`).
+   - Sets `goalCacheAt = Long.MAX_VALUE`.
+5. **High-Frequency Guardian Loop & SharedPreferences Immunization**:
+   - Runs every 500ms when an Activity is active in the foreground (10s in background) to sweep active windows and dismiss any leftover dialogs.
+   - Immunizes SharedPreferences for CNCVerse (`cncverse_donation`), Raghav (`raghav_donation_prefs`), NetNaija (`netnaija_donation_prefs`), Phisher (`phisher_donation_prefs`), and generic presets.
 
 ---
 
