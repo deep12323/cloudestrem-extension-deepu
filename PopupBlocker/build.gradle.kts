@@ -7,10 +7,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 }
 
-version = 1
+version = 2
 
 cloudstream {
-    description = "Hides and blocks donation popups, ads, and support banners across all Cloudstream extensions (e.g. CNCVerse)"
+    description = "Suppresses and blocks donation popups, ads, and support dialogs across all CloudStream extensions (CNCVerse, Raghav, Phisher Repo, etc.)"
     authors = listOf("deepu2135")
     status = 1
     tvTypes = listOf("Others")

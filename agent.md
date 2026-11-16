@@ -103,6 +103,34 @@ flowchart LR
 
 ---
 
+### 7. PopupBlocker: Universal Donation & Popup Shield Across All Wiki Repositories (v2)
+* **Problem**: PopupBlocker was installed, but donation popups were still appearing in some extensions (e.g. from Raghav repo like VegaMovies, Senshi, TheMoviesFlix, etc., and Phisher repo).
+* **Investigation & Deep Scan of all Wiki Repositories** (`https://cloudstream.miraheze.org/wiki/List_of_extensions`):
+  1. **Raghav Repo (`KSHITIJ8473/raghav`)**: Found `com.raghav.donation.DonationManager` and `com.raghav.donation.DonationDialogFragment` (plus `com.netnaija.app.donation` and `com.netnaija.donation`) injected across 37+ extensions. It triggers a 16s modal timer countdown dialog (`raghav_donation_dialog`) with BuyMeACoffee/UPI links. Checked by `raghav_donation_prefs` (`raghav_donation_last_shown`, `raghav_donation_goal_cache`).
+  2. **Phisher Repo (`phisher98/cloudstream-extensions-phisher`)**: Found `com.phisher98.donation.DonationManager` and `com.phisher98.donation.DonationDialogFragment` with floating modal `phisher_donation_floating_dialog` and `phisher_donation_prefs` (`phisher_donation_last_shown_v2`).
+  3. **CNCVerse Repo (`NivinCNC/CNCVerse-Cloud-Stream-Extension`)**: Uses `com.cncverse.donation.DonationManager`, `DonationDialogFragment` BottomSheet (`donation_dialog`) and `cncverse_donation` SharedPreferences.
+  4. **Other Repos (Indflix, Megix/CSX, FLUMMOX, Reflex, Bnyro, Redowan, etc.)**: Scanned DEX files and git trees — verified clean of unsolicited donation dialogs.
+* **Universal Multi-Layer Shield Implementation**:
+  1. **Proactive Multi-Repo SharedPreferences Immunization**:
+     * Pre-populates `cncverse_donation`, `raghav_donation_prefs`, `netnaija_donation_prefs`, `phisher_donation_prefs`, and generic fallback prefs (`donation_prefs`, `repo_donation_prefs`) with active cooldown timestamps, pre-achieved goals, and current day stamps.
+  2. **Universal Reflection Disarmament**:
+     * Dynamically disarms `com.cncverse.donation.DonationManager`, `com.raghav.donation.DonationManager`, `com.phisher98.donation.DonationManager`, `com.netnaija.app.donation.DonationManager`, `DonationConfig`, etc.
+     * Sets `isDialogShowing = true` and `isLaunching = true` (which forces `checkAndShow()` to abort immediately without running background coroutines), maxes `cooldownHours` and `cooldownMillis`, neutralizes `testMode`, and disables `enabled`.
+  3. **Fragment Interception & Real-time Auto-Dismissal**:
+     * Hooks `FragmentManager.FragmentLifecycleCallbacks` on all activities.
+     * Matches known tags (`donation_dialog`, `raghav_donation_dialog`, `phisher_donation_floating_dialog`) and any tag/class containing `.donation.`, `donation`, `donate`, `support_repo`, `ad_dialog`, `sponsor`.
+     * Instantly sets window DecorView visibility to `GONE` and alpha to `0f`, dismisses dialog and removes fragment with state loss allowed.
+  4. **Keyword Scanner**:
+     * Recursively sweeps TextViews for donation text: `"keep cncverse alive"`, `"buymeacoffee.com"`, `"kshitij8473.github.io/donate"`, `"donate via upi"`, `"help keep phisher repo alive"`, `"recent contribution"`, `"maybe later ("`, `"goal missed = slower updates"`, etc.
+  5. **15-Second Guardian Daemon**:
+     * Periodic background loop keeps cooldown timestamps continually fresh and sweeps fragments.
+  6. **Version Bump & Distribution**:
+     * Bumped to **v2** in `PopupBlocker/build.gradle.kts`, `builds/plugins.json`, and `.github/workflows/build.yml`.
+     * Bumped cache buster to `?v=28` in `builds/repo.json` and `.github/workflows/build.yml`.
+     * Rebuilt `builds/PopupBlocker.cs3` and copied to `/storage/emulated/0/Cloudstream3/plugins/PopupBlocker.cs3`.
+
+---
+
 ## 📑 Full Catalogue Breakdown in H2RxDMovies (v4)
 
 | Category Name | API Query Endpoint | Card Format |
@@ -144,7 +172,7 @@ flowchart LR
 | **TorrServe** | `TorrServe` | `6` | BitTorrent engine with 40+ Tier-1 trackers & memory tuner |
 | **External Players** | `ExternalPlayers` | **`2`** | MPV Infinity, mpvEx & 1DM integrations in video player selector |
 | **Skip Torrent Warning**| `SkipTorrentWarning` | `3` | Bypasses torrent confirmation dialog & displays live stats |
-| **Popup Blocker** | `PopupBlocker` | `1` | Suppresses donation popups & modal sponsor dialogs |
+| **Popup Blocker** | `PopupBlocker` | **`2`** | Suppresses donation popups & modal sponsor dialogs (CNCVerse, Raghav, Phisher Repo, etc.) |
 | **H2RxDMovies** | `H2RxDMovies` | **`4`** | 25-row catalogue streaming movies & TV series via HubCloud |
 | **Allinone Live TV** | `AllInOneLiveTV` | **`1`** | Live TV & Sports channels (JioTV Plus, SonyLiv, Sports TV, Fancode) |
 | **MoviesDrive** | `MoviesDrive` | **`4`** | Movies & TV series with HubCloud extraction sorted by decreasing file size |

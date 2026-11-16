@@ -68,7 +68,7 @@ class PopupBlockerPlugin : Plugin() {
         rootLayout.addView(titleView)
 
         val descView = TextView(ctx).apply {
-            text = "Silently hides intrusive donation popups & ad banners (CNCVerse, etc.)"
+            text = "Suppresses donation popups & sponsor dialogs (Raghav, CNCVerse, Phisher, etc.)"
             textSize = 12f
             setTextColor(Color.parseColor("#94A3B8"))
             setPadding(0, 0, 0, dp(ctx, 14))
@@ -132,7 +132,7 @@ class PopupBlockerPlugin : Plugin() {
         // Toggle 1: Block Donation Dialogs
         val donationRow = createToggleRow(
             title = "Block Donation Popups",
-            subtitle = "Intercept & dismiss 'Keep CNCVerse Alive' dialogs",
+            subtitle = "Intercept & dismiss donation dialogs (Raghav, CNCVerse, Phisher, etc.)",
             initialState = PopupBlockerManager.isBlockDonationDialogsEnabled(ctx)
         ) { enabled ->
             PopupBlockerManager.setBlockDonationDialogsEnabled(ctx, enabled)
@@ -141,8 +141,8 @@ class PopupBlockerPlugin : Plugin() {
 
         // Toggle 2: Proactive Date Immunization
         val immRow = createToggleRow(
-            title = "Proactive Date Shield",
-            subtitle = "Pre-authorizes donation check to prevent API stats calls",
+            title = "Proactive Shield",
+            subtitle = "Pre-authorizes cooldowns & goal status across all extensions",
             initialState = PopupBlockerManager.isImmunizePrefsEnabled(ctx)
         ) { enabled ->
             PopupBlockerManager.setImmunizePrefsEnabled(ctx, enabled)
@@ -152,7 +152,7 @@ class PopupBlockerPlugin : Plugin() {
         // Toggle 3: Auto-Dismiss Ad Banners
         val adRow = createToggleRow(
             title = "Suppress Ad Banners",
-            subtitle = "Auto-dismiss popup cards containing ad & sponsor links",
+            subtitle = "Auto-dismiss popup cards containing ad, UPI, & sponsor links",
             initialState = PopupBlockerManager.isAutoDismissAdsEnabled(ctx)
         ) { enabled ->
             PopupBlockerManager.setAutoDismissAdsEnabled(ctx, enabled)
