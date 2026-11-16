@@ -2,6 +2,7 @@ package com.cleanstream.blocker
 
 import android.app.Activity
 import android.app.Application
+import android.app.Dialog
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
@@ -9,8 +10,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
+import android.view.Window
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
@@ -38,6 +42,8 @@ object PopupBlockerManager {
     const val KEY_AUTO_DISMISS_ADS = "auto_dismiss_ads"
 
     private val KNOWN_DONATION_CLASSES = listOf(
+        "com.allforu.Announcer",
+        "com.allforu.AnnouncerCard",
         "com.cncverse.donation.DonationManager",
         "com.raghav.donation.DonationManager",
         "com.netnaija.app.donation.DonationManager",
@@ -53,13 +59,22 @@ object PopupBlockerManager {
         "phisher_donation_floating_dialog"
     )
 
-    private val AD_KEYWORDS = listOf(
+    val AD_KEYWORDS = listOf(
+        "support allforu",
+        "allforu",
+        "monthly support goal",
+        "allforu-goal.pages.dev",
+        "allforu-goal",
+        "buymeacoffee.com/allforu1",
+        "buymeacoffee.com",
+        "rzp.io",
+        "choose your donation option",
+        "community-funded, always free",
         "keep cncverse alive",
         "support the repo",
         "watch an ad to support",
         "cncverse stays free",
         "awesome supporters",
-        "buymeacoffee.com",
         "kshitij8473.github.io/donate",
         "donate via upi",
         "help keep phisher repo alive",
@@ -70,7 +85,9 @@ object PopupBlockerManager {
         "can't donate? watch an ad",
         "phisher98",
         "raghav766",
-        "maybe later ("
+        "maybe later (",
+        "rvr sky angel",
+        "t.me/+lt1xwtmgyirhmzc9"
     )
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -78,6 +95,7 @@ object PopupBlockerManager {
     private var appContext: Context? = null
     private var currentActivityRef: WeakReference<Activity>? = null
     private var isLifecycleRegistered = false
+    private var isWmgHooked = false
     private var guardianJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main)
 
@@ -95,6 +113,8 @@ object PopupBlockerManager {
             immunizePreferences(context)
             scanAndNeutralize()
             currentActivityRef?.get()?.let { act ->
+                sweepWindowViews()
+                dismissAnnouncerCurrent()
                 if (act is FragmentActivity) {
                     dismissPendingDialogs(act.supportFragmentManager)
                 }
@@ -140,7 +160,7 @@ object PopupBlockerManager {
         }
         appContext = app ?: context
 
-        Log.i(TAG, "Initializing PopupBlockerManager guardian shield across all repos")
+        Log.i(TAG, "Initializing PopupBlockerManager universal shield across all extensions")
 
         // 1. Proactively immunize SharedPreferences for CNCVerse, Raghav, Phisher, NetNaija, etc.
         immunizePreferences(context)
@@ -153,9 +173,7 @@ object PopupBlockerManager {
             val act = actField.get(null) as? Activity
             if (act != null) {
                 currentActivityRef = WeakReference(act)
-                if (act is FragmentActivity) {
-                    hookActivity(act)
-                }
+                hookActivity(act)
                 if (app == null) {
                     app = act.application
                     if (appContext !is Application && app != null) {
@@ -166,7 +184,7 @@ object PopupBlockerManager {
         } catch (_: Throwable) {}
 
         // Hook passed activity if already active
-        if (context is FragmentActivity) {
+        if (context is Activity) {
             hookActivity(context)
         }
 
@@ -175,15 +193,18 @@ object PopupBlockerManager {
             app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
                 override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
                     currentActivityRef = WeakReference(activity)
-                    if (activity is FragmentActivity) {
-                        hookActivity(activity)
-                    }
+                    hookActivity(activity)
                     immunizePreferences(activity)
                     scanAndNeutralize()
+                    sweepWindowViews()
+                    dismissAnnouncerCurrent()
                 }
 
                 override fun onActivityStarted(activity: Activity) {
                     currentActivityRef = WeakReference(activity)
+                    hookActivity(activity)
+                    sweepWindowViews()
+                    dismissAnnouncerCurrent()
                     if (activity is FragmentActivity) {
                         dismissPendingDialogs(activity.supportFragmentManager)
                     }
@@ -191,8 +212,10 @@ object PopupBlockerManager {
 
                 override fun onActivityResumed(activity: Activity) {
                     currentActivityRef = WeakReference(activity)
+                    hookActivity(activity)
+                    sweepWindowViews()
+                    dismissAnnouncerCurrent()
                     if (activity is FragmentActivity) {
-                        hookActivity(activity)
                         dismissPendingDialogs(activity.supportFragmentManager)
                     }
                     immunizePreferences(activity)
@@ -211,10 +234,13 @@ object PopupBlockerManager {
             isLifecycleRegistered = true
         }
 
-        // 4. Start fast guardian daemon loop (every 15s to maintain active cooldowns)
+        // 4. Hook WindowManagerGlobal to intercept direct native AlertDialogs instantly
+        hookWindowManager()
+
+        // 5. Start fast guardian daemon loop (every 500ms when active)
         startGuardianDaemon()
 
-        // 5. Deep reflection scan of loaded plugins
+        // 6. Deep reflection scan of loaded plugins
         scanAndNeutralize()
     }
 
@@ -225,40 +251,302 @@ object PopupBlockerManager {
         Log.i(TAG, "PopupBlockerManager cleaned up")
     }
 
-    private fun hookActivity(activity: FragmentActivity) {
+    private fun hookActivity(activity: Activity) {
         try {
-            val fm = activity.supportFragmentManager
-            dismissPendingDialogs(fm)
+            currentActivityRef = WeakReference(activity)
 
-            fm.registerFragmentLifecycleCallbacks(object : FragmentManager.FragmentLifecycleCallbacks() {
-                override fun onFragmentAttached(fm: FragmentManager, f: Fragment, context: Context) {
-                    super.onFragmentAttached(fm, f, context)
-                    checkAndDismiss(f)
-                }
+            // 1. Hook FragmentManager if FragmentActivity
+            if (activity is FragmentActivity) {
+                val fm = activity.supportFragmentManager
+                dismissPendingDialogs(fm)
 
-                override fun onFragmentCreated(fm: FragmentManager, f: Fragment, savedInstanceState: Bundle?) {
-                    super.onFragmentCreated(fm, f, savedInstanceState)
-                    checkAndDismiss(f)
-                }
+                fm.registerFragmentLifecycleCallbacks(object : FragmentManager.FragmentLifecycleCallbacks() {
+                    override fun onFragmentAttached(fm: FragmentManager, f: Fragment, context: Context) {
+                        super.onFragmentAttached(fm, f, context)
+                        checkAndDismiss(f)
+                    }
 
-                override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
-                    super.onFragmentViewCreated(fm, f, v, savedInstanceState)
-                    checkAndDismiss(f)
-                    inspectViewForAds(f, v)
-                }
+                    override fun onFragmentCreated(fm: FragmentManager, f: Fragment, savedInstanceState: Bundle?) {
+                        super.onFragmentCreated(fm, f, savedInstanceState)
+                        checkAndDismiss(f)
+                    }
 
-                override fun onFragmentStarted(fm: FragmentManager, f: Fragment) {
-                    super.onFragmentStarted(fm, f)
-                    checkAndDismiss(f)
-                }
+                    override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
+                        super.onFragmentViewCreated(fm, f, v, savedInstanceState)
+                        checkAndDismiss(f)
+                        inspectViewForAds(f, v)
+                    }
 
-                override fun onFragmentResumed(fm: FragmentManager, f: Fragment) {
-                    super.onFragmentResumed(fm, f)
-                    checkAndDismiss(f)
+                    override fun onFragmentStarted(fm: FragmentManager, f: Fragment) {
+                        super.onFragmentStarted(fm, f)
+                        checkAndDismiss(f)
+                    }
+
+                    override fun onFragmentResumed(fm: FragmentManager, f: Fragment) {
+                        super.onFragmentResumed(fm, f)
+                        checkAndDismiss(f)
+                    }
+                }, true)
+            }
+
+            // 2. Hook Window Callback on the Activity to intercept direct AlertDialogs when focus changes
+            val win = activity.window
+            val currentCallback = win.callback
+            if (currentCallback != null && currentCallback !is ShieldWindowCallback) {
+                win.callback = ShieldWindowCallback(currentCallback)
+            }
+
+            // 3. Attach layout listener to decor view to catch dynamic dialog appearances
+            win.decorView.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    sweepWindowViews()
+                    dismissAnnouncerCurrent()
                 }
-            }, true)
+            })
+
+            // 4. Ensure WindowManager hook is installed
+            hookWindowManager()
+
+            // 5. Immediate window sweep
+            sweepWindowViews()
+            dismissAnnouncerCurrent()
         } catch (t: Throwable) {
-            Log.e(TAG, "Error hooking activity fragment manager", t)
+            Log.e(TAG, "Error hooking activity: ${t.message}", t)
+        }
+    }
+
+    private class ShieldWindowCallback(private val delegate: Window.Callback) : Window.Callback by delegate {
+        override fun onWindowFocusChanged(hasFocus: Boolean) {
+            delegate.onWindowFocusChanged(hasFocus)
+            if (!hasFocus) {
+                sweepWindowViews()
+                dismissAnnouncerCurrent()
+            }
+        }
+
+        override fun onAttachedToWindow() {
+            delegate.onAttachedToWindow()
+            sweepWindowViews()
+            dismissAnnouncerCurrent()
+        }
+
+        override fun onContentChanged() {
+            delegate.onContentChanged()
+            sweepWindowViews()
+            dismissAnnouncerCurrent()
+        }
+    }
+
+    private fun hookWindowManager() {
+        if (isWmgHooked) return
+        mainHandler.post {
+            try {
+                val wmgClass = Class.forName("android.view.WindowManagerGlobal")
+                val getInstanceMethod = wmgClass.getMethod("getInstance")
+                val wmg = getInstanceMethod.invoke(null) ?: return@post
+                val mViewsField = wmgClass.getDeclaredField("mViews")
+                mViewsField.isAccessible = true
+                val currentList = mViewsField.get(wmg) as? ArrayList<View> ?: return@post
+
+                if (currentList !is ShieldViewsList) {
+                    val shieldList = ShieldViewsList(currentList)
+                    mViewsField.set(wmg, shieldList)
+                    isWmgHooked = true
+                    Log.i(TAG, "Shield active: WindowManagerGlobal mViews hook installed")
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "WindowManagerGlobal hook fallback: ${t.message}")
+            }
+        }
+    }
+
+    private class ShieldViewsList(val original: ArrayList<View>) : ArrayList<View>(original) {
+        override fun add(element: View): Boolean {
+            checkElement(element)
+            return super.add(element)
+        }
+
+        override fun add(index: Int, element: View) {
+            checkElement(element)
+            super.add(index, element)
+        }
+
+        private fun checkElement(v: View) {
+            try {
+                if (isDonationWindowView(v)) {
+                    v.visibility = View.GONE
+                    v.alpha = 0f
+                    postImmediateNeutralize(v)
+                }
+            } catch (_: Throwable) {}
+        }
+    }
+
+    fun postImmediateNeutralize(v: View) {
+        mainHandler.post {
+            try {
+                val wmgClass = Class.forName("android.view.WindowManagerGlobal")
+                val getInstanceMethod = wmgClass.getMethod("getInstance")
+                val wmg = getInstanceMethod.invoke(null) ?: return@post
+                neutralizeWindowView(wmg, v)
+            } catch (_: Throwable) {
+                dismissAnnouncerCurrent()
+            }
+        }
+    }
+
+    fun isDonationWindowView(v: View): Boolean {
+        val className = v.javaClass.name.lowercase(Locale.US)
+        if (className.contains("announcercard") ||
+            className.contains("donationcard") ||
+            className.contains("donationdialog") ||
+            className.contains(".donation.")
+        ) {
+            return true
+        }
+        return inspectViewForDonationKeywords(v)
+    }
+
+    private fun inspectViewForDonationKeywords(v: View): Boolean {
+        val className = v.javaClass.name.lowercase(Locale.US)
+        if (className.contains("announcercard") || className.contains("donationcard")) {
+            return true
+        }
+
+        if (v is TextView) {
+            val text = v.text?.toString()?.lowercase(Locale.US) ?: ""
+            if (text.isNotEmpty()) {
+                for (kw in AD_KEYWORDS) {
+                    if (text.contains(kw)) return true
+                }
+                if (text.contains("monthly goal") &&
+                    (text.contains("target") || text.contains("raised") || text.contains("donor") || text.contains("supporter"))
+                ) {
+                    return true
+                }
+            }
+        } else if (v is ViewGroup) {
+            for (i in 0 until v.childCount) {
+                if (inspectViewForDonationKeywords(v.getChildAt(i))) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    fun sweepWindowViews() {
+        mainHandler.post {
+            try {
+                val ctx = appContext ?: return@post
+                if (!isBlockDonationDialogsEnabled(ctx)) return@post
+
+                val wmgClass = Class.forName("android.view.WindowManagerGlobal")
+                val getInstance = wmgClass.getMethod("getInstance")
+                val wmg = getInstance.invoke(null) ?: return@post
+                val mViewsField = wmgClass.getDeclaredField("mViews")
+                mViewsField.isAccessible = true
+                val views = mViewsField.get(wmg) as? List<*> ?: return@post
+
+                val act = currentActivityRef?.get()
+                val actDecorView = act?.window?.decorView
+
+                for (item in ArrayList(views)) {
+                    val v = item as? View ?: continue
+                    if (actDecorView != null && v == actDecorView) continue
+
+                    if (isDonationWindowView(v)) {
+                        Log.i(TAG, "Shield active: swept and neutralizing donation window view: $v")
+                        neutralizeWindowView(wmg, v)
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+    }
+
+    private fun neutralizeWindowView(wmg: Any, v: View) {
+        try {
+            // 1. Hide immediately to eliminate any visual flicker
+            v.visibility = View.GONE
+            v.alpha = 0f
+
+            // 2. Dismiss Announcer.current if loaded
+            dismissAnnouncerCurrent()
+
+            // 3. Try to click close / maybe later button
+            if (!clickCloseOrCancelButton(v)) {
+                // 4. Dispatch back key event to dialog window
+                v.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK))
+                v.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK))
+            }
+
+            // 5. Try removeView from WindowManagerGlobal as final fallback
+            mainHandler.postDelayed({
+                try {
+                    if (v.isAttachedToWindow) {
+                        val removeViewMethod = wmg.javaClass.getMethod("removeView", View::class.java, java.lang.Boolean.TYPE)
+                        removeViewMethod.invoke(wmg, v, false)
+                    }
+                } catch (_: Throwable) {}
+            }, 50L)
+        } catch (_: Throwable) {}
+    }
+
+    private fun clickCloseOrCancelButton(v: View): Boolean {
+        if (v.isClickable) {
+            if (v is TextView) {
+                val text = v.text?.toString()?.trim()?.lowercase(Locale.US) ?: ""
+                if (text == "✕" || text == "x" || text == "close" || text == "maybe later" || text == "cancel" || text == "dismiss") {
+                    v.performClick()
+                    return true
+                }
+            }
+            val desc = v.contentDescription?.toString()?.trim()?.lowercase(Locale.US) ?: ""
+            if (desc == "close" || desc == "cancel" || desc == "dismiss") {
+                v.performClick()
+                return true
+            }
+        }
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) {
+                if (clickCloseOrCancelButton(v.getChildAt(i))) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    fun dismissAnnouncerCurrent() {
+        mainHandler.post {
+            for (cl in scannedLoaders) {
+                try {
+                    val clazz = Class.forName("com.allforu.Announcer", false, cl)
+                    val currentField = clazz.getDeclaredField("current")
+                    currentField.isAccessible = true
+                    val currentDialog = currentField.get(null)
+                    if (currentDialog != null) {
+                        if (currentDialog is Dialog) {
+                            currentDialog.dismiss()
+                        }
+                        currentField.set(null, null)
+                        Log.i(TAG, "Shield active: dismissed Announcer.current dialog")
+                    }
+
+                    val animField = clazz.getDeclaredField("anim")
+                    animField.isAccessible = true
+                    val anim = animField.get(null)
+                    if (anim is android.animation.ValueAnimator) {
+                        anim.cancel()
+                        animField.set(null, null)
+                    }
+
+                    // Keep appCtx nullified so showOnHome immediately aborts
+                    val appCtxField = clazz.getDeclaredField("appCtx")
+                    appCtxField.isAccessible = true
+                    appCtxField.set(null, null)
+                } catch (_: Throwable) {}
+            }
         }
     }
 
@@ -308,36 +596,11 @@ object PopupBlockerManager {
         if (view == null) return
 
         try {
-            if (containsAdKeywords(view)) {
+            if (inspectViewForDonationKeywords(view)) {
                 Log.i(TAG, "Shield active: blocked popup matching donation/ad banner keywords in [${f.javaClass.name}]")
                 silentDismiss(f)
             }
         } catch (_: Throwable) {}
-    }
-
-    private fun containsAdKeywords(v: View): Boolean {
-        if (v is TextView) {
-            val text = v.text?.toString()?.lowercase(Locale.US) ?: ""
-            if (text.isEmpty()) return false
-
-            for (kw in AD_KEYWORDS) {
-                if (text.contains(kw)) return true
-            }
-
-            // Also check for monthly goal combinations
-            if (text.contains("monthly goal") &&
-                (text.contains("target") || text.contains("raised") || text.contains("donor") || text.contains("contribute"))
-            ) {
-                return true
-            }
-        } else if (v is ViewGroup) {
-            for (i in 0 until v.childCount) {
-                if (containsAdKeywords(v.getChildAt(i))) {
-                    return true
-                }
-            }
-        }
-        return false
     }
 
     private fun silentDismiss(f: Fragment) {
@@ -491,6 +754,59 @@ object PopupBlockerManager {
     }
 
     private fun neutralizeClass(clazz: Class<*>) {
+        // Specific neutralization for AllForU Announcer
+        if (clazz.name.contains("Announcer")) {
+            try {
+                val currentField = try { clazz.getDeclaredField("current") } catch (_: Throwable) { null }
+                if (currentField != null) {
+                    currentField.isAccessible = true
+                    val currentDialog = currentField.get(null)
+                    if (currentDialog is Dialog) {
+                        currentDialog.dismiss()
+                        currentField.set(null, null)
+                        Log.i(TAG, "Dismissed active Announcer.current dialog")
+                    }
+                }
+
+                val animField = try { clazz.getDeclaredField("anim") } catch (_: Throwable) { null }
+                if (animField != null) {
+                    animField.isAccessible = true
+                    val animObj = animField.get(null)
+                    if (animObj is android.animation.ValueAnimator) {
+                        animObj.cancel()
+                        animField.set(null, null)
+                    }
+                }
+
+                val appCtxField = try { clazz.getDeclaredField("appCtx") } catch (_: Throwable) { null }
+                if (appCtxField != null) {
+                    appCtxField.isAccessible = true
+                    appCtxField.set(null, null)
+                }
+
+                val initedField = try { clazz.getDeclaredField("inited") } catch (_: Throwable) { null }
+                if (initedField != null) {
+                    initedField.isAccessible = true
+                    initedField.setBoolean(null, true)
+                }
+
+                val seqField = try { clazz.getDeclaredField("requestSeq") } catch (_: Throwable) { null }
+                if (seqField != null) {
+                    seqField.isAccessible = true
+                    seqField.setInt(null, Int.MIN_VALUE)
+                }
+
+                val goalCacheAtField = try { clazz.getDeclaredField("goalCacheAt") } catch (_: Throwable) { null }
+                if (goalCacheAtField != null) {
+                    goalCacheAtField.isAccessible = true
+                    goalCacheAtField.setLong(null, Long.MAX_VALUE)
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "Error in specific Announcer neutralization: ${t.message}")
+            }
+        }
+
+        // Generic neutralization for donation manager fields
         for (field in clazz.declaredFields) {
             try {
                 field.isAccessible = true
@@ -534,14 +850,20 @@ object PopupBlockerManager {
 
         guardianJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
-                delay(15 * 1000L) // Every 15 seconds keeps timestamps always fresh
+                val act = currentActivityRef?.get()
+                val isForeground = act != null && !act.isFinishing && !act.isDestroyed
+                val delayMs = if (isForeground) 500L else 10000L
+                delay(delayMs)
+
                 val ctx = appContext ?: continue
                 immunizePreferences(ctx)
                 scanAndNeutralize()
 
-                currentActivityRef?.get()?.let { act ->
-                    if (act is FragmentActivity && !act.isFinishing && !act.isDestroyed) {
-                        mainHandler.post {
+                if (isForeground) {
+                    mainHandler.post {
+                        sweepWindowViews()
+                        dismissAnnouncerCurrent()
+                        if (act is FragmentActivity) {
                             dismissPendingDialogs(act.supportFragmentManager)
                         }
                     }

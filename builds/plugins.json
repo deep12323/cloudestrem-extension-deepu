@@ -91,19 +91,19 @@
   {
     "name": "Popup Blocker",
     "internalName": "PopupBlocker",
-    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/PopupBlocker.cs3?v=2",
+    "url": "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/PopupBlocker.cs3?v=3",
     "tvTypes": [
       "Others"
     ],
     "language": "en",
     "iconUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/action/shield/materialicons/48dp/2x/baseline_shield_white_48dp.png",
     "apiVersion": 10,
-    "version": 2,
+    "version": 3,
     "authors": [
       "deepu2135"
     ],
     "status": 1,
-    "description": "Suppresses and blocks donation popups, ads, and support dialogs across all CloudStream extensions (CNCVerse, Raghav, Phisher Repo, etc.)"
+    "description": "Universal shield that suppresses and blocks donation popups, announcement modals, and support dialogs across all CloudStream extensions (AllForU, CNCVerse, Raghav, Phisher Repo, etc.)"
   },
   {
     "name": "H2RxDMovies",
