@@ -1,6 +1,10 @@
-# Cloudstream Extensions Repo
+# Cloudstream Extensions Repo (Telegram & Google Drive)
 
-A collection of powerful, native [Cloudstream 3](https://github.com/recloudstream/cloudstream) plugins designed to transform your personal cloud accounts and torrents into on-demand streaming services.
+A collection of powerful, native [CloudStream 3](https://github.com/recloudstream/cloudstream) plugins designed to transform your personal cloud accounts and Telegram feeds into on-demand streaming services.
+
+> [!NOTE]
+> Additional utility and streaming plugins (TorrServe, ExternalPlayers, SkipTorrentWarning, PopupBlocker, H2RxDMovies, AllInOneLiveTV, MoviesDrive, NextUp) have been moved to their dedicated repository:
+> 👉 [deep12323/cloudstream-plugins](https://github.com/deep12323/cloudstream-plugins)
 
 ## 🔌 Available Plugins
 
@@ -18,53 +22,15 @@ A fully-featured plugin to stream videos and audio directly from your personal G
 * **Dynamic Posters**: Automatically uses the first video's thumbnail as the cover art for folders.
 * **Shared Drive Support**: Full access to your Shared Drives.
 
-### 3. TorrServe Provider & Engine Tuner
-A native BitTorrent streaming engine and buffer management utility integrated directly into Cloudstream.
-* **Instant BitTorrent Streaming**: Search or paste any magnet link, `.torrent` file, or info hash to stream video content immediately over local HTTP without waiting for full downloads.
-* **🚀 40+ High-Speed Streaming Trackers**: Automatically injects 40 Tier-1 public BitTorrent trackers into every magnet link and syncs daily tracker lists into TorrServer (`RetrackersMode = 1`). Drastically accelerates peer/seeder discovery, speeds up initial chunk buffering, and prevents stream stalling.
-* **⚡ 0% Preload (Instant Start)**: Break free from standard CloudStream 50% pre-buffering! Set preload buffer down to `0%` to start video playback immediately as the first chunks arrive.
-* **⏩ Forward Read-Ahead Customization**: Tune the forward read-ahead window (up to 95–100%) to cushion against network spikes and ensure seamless seeking.
-* **💾 Memory & Disk Cache Modes**: Adjust cache from 32MB up to 1GB+; choose between RAM for ultra-fast seeking or Disk storage to safeguard low-memory devices (Android TV / FireStick).
-* **🚫 Seeding Control (Leech Only)**: Toggle off background uploading to conserve mobile data, reduce battery consumption, and prevent bandwidth saturation.
-* **🤖 Auto-Applying Settings Daemon**: Custom buffer size, preload %, lookahead %, and upload rules persist permanently across app restarts and are auto-applied on cold boot and stream initialization.
-* **Multi-Episode & Subtitles**: Automatically unpacks multi-file torrents into episodes and extracts external/embedded subtitles on the fly.
-
-### 4. Skip Torrent Warning
-A lightweight utility plugin that bypasses the *"Stream Torrent"* confirmation dialog and shows stream stats in player controls.
-* **⚡ Zero Interruption**: Enjoy instant 1-click torrent streaming on mobile and Android TV without annoying confirmation popups.
-* **📊 Player Stats Card**: Automatically expands download speed, file size, and active connection stats inside player controls.
-* **🎛️ Minimal Settings**: Toggle warning bypass and player stats with clean, instant toggles.
-
-### 5. Popup & Donation Blocker
-A guardian shield plugin that completely eliminates intrusive donation prompts, monthly mission popups, and ad banners across all Cloudstream extensions (specifically designed for CNCVerse).
-* **🛡️ Zero Popups**: Automatically intercepts and dismisses "Keep CNCVerse Alive" modal dialogs before they render a single frame.
-* **⚡ Proactive Date Immunization**: Pre-authorizes donation session dates in SharedPreferences so extensions skip network stats calls and donation checks entirely.
-* **🚫 Ad Redirect Shield**: Blocks secondary sponsor/ad redirects (`omg10.com`, etc.).
-* **🎛️ Minimal Dark Settings**: Customize popup dismissal, date immunization, and ad banner suppression with clean instant toggles.
-
 ---
 
 ## ⚙️ Installation & Setup
 
-1. **Install the Plugin Repo**: Open Cloudstream > Settings > Extensions > Add Repository, and paste this URL:
+1. **Install the Plugin Repo**: Open CloudStream > **Settings** > **Extensions** > **Add Repository**, and paste this URL:
    ```text
    https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/repo.json
    ```
-2. **Download the Plugins**: Install the **TorrServe**, **Telegram**, or **Google Drive** extension from the repository list.
-
----
-
-## ⚡ TorrServe Configuration Guide
-
-1. **Install TorrServe**: Install the `TorrServe` plugin from this repository in Cloudstream.
-2. **Access Settings**: Click the gear icon next to `TorrServe` under Settings > Extensions.
-3. **Choose a Profile or Customize**:
-   - **⚡ Instant Start (0%)**: 128MB buffer, 0% preload, 95% lookahead, leech-only — starts streaming instantly.
-   - **📺 FireStick / TV**: 48MB buffer, 15% preload, 85% lookahead, disk cache enabled — optimal for devices with low RAM.
-   - **🎬 4K Cinema**: 384MB buffer, 15% preload, 95% lookahead, RAM cache — optimal buffer cushion for high bitrate movies.
-   - **Custom Tuning**: Adjust stream buffer size, initial preload buffer (0–70%), forward read-ahead window (0–100%), and disable/enable upload seeding.
-   - **🚀 Fast Trackers**: 40+ high-speed public trackers are automatically active and injected; use "Force Re-inject Trackers Now" anytime to refresh.
-4. **Automatic Persistence**: Settings saved here are automatically maintained and applied by the background daemon whenever Cloudstream launches or a torrent stream starts.
+2. **Download the Plugins**: Install the **Telegram** or **Google Drive** extension from the repository list.
 
 ---
 
@@ -85,8 +51,8 @@ To use the Google Drive plugin, you must configure it with your own Google Cloud
    - Add the following **Authorized redirect URI**: `https://developers.google.com/oauthplayground`
    - Click Create and copy your **Client ID** and **Client Secret**.
 
-### Step 2: Add to Cloudstream
-1. Open Cloudstream and click the Gear Icon next to the Google Drive plugin.
+### Step 2: Add to CloudStream
+1. Open CloudStream and click the Gear Icon next to the Google Drive plugin.
 2. Paste your **Client ID** and **Client Secret** into the settings.
 3. You're done! Return to the home page and your Google Drive will load instantly.
 
@@ -96,16 +62,4 @@ To use the Google Drive plugin, you must configure it with your own Google Cloud
 
 1. **Authenticate**: Go to the extension settings (gear icon) and log into your Telegram account using your phone number or QR code.
 2. **Add Channels**: In the settings, enter a comma-separated list of your favorite movie channels (e.g., `@movie_channel, @series_channel`).
-3. **Watch**: Go back to the Cloudstream homepage! Use the `Teleflix` provider for a beautiful UI of trending movies/series, or use the `Telegram` provider to browse your raw channels directly!
-
----
-
-## 💡 Troubleshooting Playback Issues
-
-If a video fails to play, buffers endlessly, or has no audio, it is likely encoded in a format that Cloudstream's built-in ExoPlayer struggles to decode natively (e.g. heavy HEVC/x265 `.mkv` files).
-**Fix**: Simply tap the **"Play in external player"** icon in Cloudstream and choose a robust external player like **MPV (or MPVEX)** or **VLC**—they have much broader codec support and will play the stream flawlessly!
-
----
-
-## 📄 License
-This repository is released into the public domain. You may use it however you want.
+3. **Watch**: Go back to the CloudStream homepage! Use the `Teleflix` provider for a beautiful UI of trending movies/series, or use the `Telegram` provider to browse your raw channels directly!
