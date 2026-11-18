@@ -1,9 +1,9 @@
 {
   "name": "cloudestrem-extension-deepu",
   "iconUrl": "https://bollywood.eu.org/favicon.ico",
-  "description": "Telegram Extension",
+  "description": "Telegram & Google Drive Extension",
   "manifestVersion": 1,
   "pluginLists": [
-    "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=29"
+    "https://raw.githubusercontent.com/deep12323/cloudestrem-extension-deepu/builds/plugins.json?v=31"
   ]
 }
